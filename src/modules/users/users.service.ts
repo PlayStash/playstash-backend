@@ -39,6 +39,7 @@ import { type RegisterUserDto } from "./models/register-user.dto.js";
 import { Role } from "./models/role.enum.js";
 import { type UpdateUserDto } from "./models/update-user.dto.js";
 import { PlaystashUser } from "./playstash-user.entity.js";
+import { UserStatusEvents } from "./user-status.events.js";
 
 const { toLower } = lodash;
 
@@ -60,6 +61,7 @@ export class UsersService implements OnApplicationBootstrap {
     @Inject(forwardRef(() => GamesService))
     private readonly gamesService: GamesService,
     @InjectPlaystashConfig() private readonly config: AppConfiguration,
+    private readonly userStatusEvents: UserStatusEvents = new UserStatusEvents(),
   ) {}
 
   async onApplicationBootstrap() {
@@ -384,7 +386,7 @@ export class UsersService implements OnApplicationBootstrap {
         "Authentication Failed: User has been deleted. Contact an Administrator to recover the User.",
       );
     }
-    if (!user.activated && user.role !== Role.ADMIN) {
+    if (!user.activated) {
       throw new NotAcceptableException(
         "Authorization Failed: User is not activated. Contact an Administrator to activate the User.",
       );
@@ -493,7 +495,10 @@ export class UsersService implements OnApplicationBootstrap {
     if (dto.report_game_metrics !== undefined)
       user.report_game_metrics = dto.report_game_metrics;
 
-    return this.userRepository.save(user);
+    const updatedUser = await this.userRepository.save(user);
+    if (updatedUser.activated === false)
+      await this.userStatusEvents.revokeAccess(updatedUser.id);
+    return updatedUser;
   }
 
   private async updateUsername(
@@ -547,7 +552,9 @@ export class UsersService implements OnApplicationBootstrap {
   /** Soft deletes a user with the specified ID. */
   public async delete(id: number): Promise<PlaystashUser> {
     const user = await this.findOneByUserIdOrFail(id);
-    return this.userRepository.softRemove(user);
+    const deletedUser = await this.userRepository.softRemove(user);
+    await this.userStatusEvents.revokeAccess(id);
+    return deletedUser;
   }
 
   /** Recovers a deleted user with the specified ID. */

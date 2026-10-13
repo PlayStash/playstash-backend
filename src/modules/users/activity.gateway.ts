@@ -2,6 +2,8 @@ import {
   forwardRef,
   Inject,
   Logger,
+  OnModuleDestroy,
+  OnModuleInit,
   UnauthorizedException,
   UseFilters,
   UseGuards,
@@ -29,8 +31,8 @@ import { ChatService } from "./chat.service.js";
 import { ActivityState } from "./models/activity-state.enum.js";
 import { Activity } from "./models/activity.dto.js";
 import { ChatHistoryDto, ChatSendDto } from "./models/chat.dto.js";
-import { Role } from "./models/role.enum.js";
 import { PlaystashUser } from "./playstash-user.entity.js";
+import { UserStatusEvents } from "./user-status.events.js";
 import { UsersService } from "./users.service.js";
 
 // Conditionally decorate the WebSocket gateway class.
@@ -45,7 +47,11 @@ const ConditionalWebSocketGateway = configuration.SERVER
 @ConditionalWebSocketGateway
 @UseFilters(WebsocketExceptionsFilter)
 export class ActivityGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleInit,
+    OnModuleDestroy
 {
   private readonly logger = new Logger(this.constructor.name);
 
@@ -54,6 +60,7 @@ export class ActivityGateway
     Activity
   >();
   private readonly chatRooms = new Map<string, Set<string>>();
+  private unsubscribeAccessRevoked?: () => void;
 
   @WebSocketServer()
   server!: Server;
@@ -66,7 +73,26 @@ export class ActivityGateway
       usersService,
       gamesService,
     ),
+    private readonly userStatusEvents: UserStatusEvents = new UserStatusEvents(),
   ) {}
+
+  onModuleInit(): void {
+    this.unsubscribeAccessRevoked = this.userStatusEvents.onAccessRevoked(
+      async (userId) => {
+        for (const socket of this.server?.sockets?.sockets.values() ?? []) {
+          if (
+            (socket as unknown as { user?: PlaystashUser }).user?.id === userId
+          )
+            socket.disconnect(true);
+        }
+        await this.removeActivity(userId);
+      },
+    );
+  }
+
+  onModuleDestroy(): void {
+    this.unsubscribeAccessRevoked?.();
+  }
 
   //@AsyncApiSub({
   //  channel: "set-activity",
@@ -107,6 +133,7 @@ export class ActivityGateway
         ),
       });
     }
+    await this.currentUser(client);
     const activity = {
       user_id: user.id,
       socket_id: client.id,
@@ -152,6 +179,7 @@ export class ActivityGateway
     const activities = await Promise.all(
       this.getAll().map((activity) => this.visibleActivity(activity, user)),
     );
+    await this.currentUser(client);
     client.emit(
       "activities",
       activities.filter((activity) => activity !== undefined),
@@ -167,6 +195,7 @@ export class ActivityGateway
       dto,
       await this.currentUser(client),
     );
+    await this.currentUser(client);
     this.subscribeConversation(client.id, result.conversation);
     return { event: "chat-history", data: result };
   }
@@ -180,6 +209,7 @@ export class ActivityGateway
       { ...dto, limit: 1 },
       await this.currentUser(client),
     );
+    await this.currentUser(client);
     this.chatRooms.get(client.id)?.delete(result.conversation);
     return { event: "chat-left", data: { conversation: result.conversation } };
   }
@@ -193,6 +223,7 @@ export class ActivityGateway
       dto,
       await this.currentUser(client),
     );
+    await this.currentUser(client);
     this.subscribeConversation(client.id, result.conversation);
     if (!result.replay) {
       await Promise.all(
@@ -236,13 +267,18 @@ export class ActivityGateway
       throw new UnauthorizedException(
         "Authentication is required for activities and chat.",
       );
-    const user = await this.usersService.findOneByUserIdOrFail(
-      authenticated.id,
-      { loadRelations: false, loadDeletedEntities: false },
-    );
-    if (user.activated === false && user.role !== Role.ADMIN)
-      throw new UnauthorizedException("The user is inactive.");
-    return user;
+    try {
+      const user = await this.usersService.findOneByUserIdOrFail(
+        authenticated.id,
+        { loadRelations: false, loadDeletedEntities: false },
+      );
+      if (!user.activated)
+        throw new UnauthorizedException("The user is inactive.");
+      return user;
+    } catch (error) {
+      client.disconnect(true);
+      throw error;
+    }
   }
 
   handleConnection(client: Socket) {
@@ -251,20 +287,32 @@ export class ActivityGateway
     // not passed them and must receive no private library/activity data.
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     this.logger.log({ message: "Client disconnected.", client: client.id });
     for (const [userId, activity] of this.activities) {
       if (activity.socket_id === client.id) {
-        this.activities.delete(userId);
-        if (activity.state !== ActivityState.INVISIBLE) {
-          for (const socket of this.server.sockets?.sockets.values() ?? []) {
-            if ((socket as unknown as { user?: PlaystashUser }).user)
-              socket.emit("remove-activity", { user_id: userId });
-          }
-        }
+        await this.removeActivity(userId);
       }
     }
     this.chatRooms.delete(client.id);
+  }
+
+  private async removeActivity(userId: number): Promise<void> {
+    const activity = this.activities.get(userId);
+    this.activities.delete(userId);
+    if (!activity || activity.state === ActivityState.INVISIBLE) return;
+    await Promise.all(
+      [...(this.server?.sockets?.sockets.values() ?? [])].map(
+        async (socket) => {
+          try {
+            await this.currentUser(socket);
+            socket.emit("remove-activity", { user_id: userId });
+          } catch {
+            /* Disabled and deleted accounts receive no activity output. */
+          }
+        },
+      ),
+    );
   }
 
   private getAll() {

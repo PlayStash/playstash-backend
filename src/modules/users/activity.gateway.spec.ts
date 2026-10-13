@@ -12,6 +12,7 @@ describe("activity privacy", () => {
       id: `socket-${id}`,
       user: { id, username: `user${id}`, role: Role.USER },
       emit: vi.fn(),
+      disconnect: vi.fn(),
     }) as any;
   beforeEach(() => {
     users = {
@@ -19,6 +20,7 @@ describe("activity privacy", () => {
         id,
         username: `user${id}`,
         role: Role.USER,
+        activated: true,
         share_restricted_activity: false,
       })),
       findUserAgeByUsername: vi.fn(async () => undefined),
@@ -84,6 +86,7 @@ describe("activity privacy", () => {
       id,
       username: `user${id}`,
       role: Role.USER,
+      activated: true,
       share_restricted_activity: true,
     }));
     await gateway.getActivities(viewer);
@@ -118,7 +121,7 @@ describe("activity privacy", () => {
         game_id: undefined,
       }),
     ]);
-    gateway.handleDisconnect(owner);
+    await gateway.handleDisconnect(owner);
     await gateway.getActivities(viewer);
     expect(viewer.emit).toHaveBeenLastCalledWith("activities", []);
   });
@@ -180,5 +183,23 @@ describe("activity privacy", () => {
     await expect(
       gateway.chatHistory({ id: "guest" } as any, {}),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("rechecks disabled administrators before broadcasts and removal updates", async () => {
+    const owner = socket(1),
+      viewer = socket(2);
+    gateway.server.sockets.sockets.set(viewer.id, viewer);
+    await gateway.chatHistory(viewer, { room: "lobby" });
+    users.findOneByUserIdOrFail.mockImplementation(async (id: number) => ({
+      id,
+      username: `user${id}`,
+      role: Role.ADMIN,
+      activated: id !== 2,
+    }));
+    await gateway.chatSend(owner, { text: "private broadcast" });
+    await gateway.setActivity(owner, { state: ActivityState.ONLINE });
+    await gateway.handleDisconnect(owner);
+    expect(viewer.emit).not.toHaveBeenCalled();
+    expect(viewer.disconnect).toHaveBeenCalledWith(true);
   });
 });

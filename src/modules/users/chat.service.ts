@@ -8,7 +8,6 @@ import type {
   ChatSendDto,
   ChatTargetDto,
 } from "./models/chat.dto.js";
-import { Role } from "./models/role.enum.js";
 import type { PlaystashUser } from "./playstash-user.entity.js";
 import { UsersService } from "./users.service.js";
 
@@ -164,7 +163,7 @@ export class ChatService {
           dto.recipient_user_id,
           { loadRelations: false, loadDeletedEntities: false },
         );
-        if (recipient.activated === false && recipient.role !== Role.ADMIN)
+        if (recipient.activated === false)
           throw new Error("Inactive recipient.");
       } catch {
         throw new WsException("The recipient is unavailable.");

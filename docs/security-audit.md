@@ -4,6 +4,7 @@ The review includes direct, transitive, development and optional dependencies, p
 
 ## Authentication and runtime fixes
 
+- Persisted deactivation blocks every role, including administrators, across Basic/JWT/refresh/SSO, API keys and issued download tokens. Account deactivation/deletion immediately disconnects existing chat/activity sockets, and broadcasts recheck recipient activation. Fresh SQLite/PostgreSQL checks exercise real HTTP/Socket.IO routes against persisted account changes; configured bootstrap administrators remain activated on startup.
 - JWT access and refresh tokens identify users only by immutable database ID. Username and email comparisons use bound exact case-insensitive equality, so underscores and percent signs cannot select another account. Real SQLite/PostgreSQL schema checks exercise these lookups and provider-specific identity uniqueness.
 - SSO identity comes exclusively from the configured authenticated UserInfo endpoint, with a timeout, response size limit and redirects disabled. Unsigned token decoding supplies no identity. Provider/subject is stored atomically on registration; names and emails never automatically link a local account. SSO fallback tokens use URL fragments, never request query strings.
 - Signing keys are independently random or derived solely from an explicit minimum-32-byte AUTH_SEED, never a database, administrator or provider password. OAuth session cookies are HttpOnly/SameSite=Lax, expire after 15 minutes and follow the request's transport security; arbitrary credentialed CORS origins are disabled.

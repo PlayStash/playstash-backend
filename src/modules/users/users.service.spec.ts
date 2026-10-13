@@ -788,17 +788,16 @@ describe("UsersService", () => {
       );
     });
 
-    it("should allow an inactive admin to authenticate", async () => {
+    it("rejects inactive administrators just like every other role", async () => {
       const mockUser = createMockUser({
         activated: false,
         role: Role.ADMIN,
         deleted_at: undefined,
       });
       userRepository.findOneOrFail.mockResolvedValue(mockUser);
-      const result = await service.findUserForAuthOrFail({
-        username: "testuser",
-      });
-      expect(result.role).toBe(Role.ADMIN);
+      await expect(
+        service.findUserForAuthOrFail({ username: "testuser" }),
+      ).rejects.toThrow("Authorization Failed: User is not activated");
     });
 
     it("should throw UnauthorizedException when the user is not found", async () => {

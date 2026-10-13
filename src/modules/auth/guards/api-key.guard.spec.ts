@@ -62,6 +62,7 @@ describe("ApiKeyGuard", () => {
     const client: any = {
       handshake: { headers: {} },
       emit: vi.fn(),
+      disconnect: vi.fn(),
       id: "ws-1",
       user: undefined,
     };
@@ -184,7 +185,7 @@ describe("ApiKeyGuard", () => {
     );
   });
 
-  it("should allow inactive admin user", async () => {
+  it("rejects inactive administrators for HTTP and disconnects their WebSockets", async () => {
     reflector.getAllAndOverride.mockReturnValue(null);
     mockApiKeyService.findUserByApiKeyOrFail.mockResolvedValue({
       username: "admin",
@@ -193,9 +194,14 @@ describe("ApiKeyGuard", () => {
       role: Role.ADMIN,
     });
 
-    const ctx = httpContext("key");
-    const result = await guard.canActivate(ctx);
-    expect(result).toBe(true);
+    await expect(guard.canActivate(httpContext("key"))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    const context = wsContext("key");
+    expect(await guard.canActivate(context)).toBe(false);
+    expect(context.switchToWs().getClient().disconnect).toHaveBeenCalledWith(
+      true,
+    );
   });
 
   // ─── Invalid API key ──────────────────────────────────────────────

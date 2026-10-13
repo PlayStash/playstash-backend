@@ -13,7 +13,6 @@ import type { AppConfiguration } from "../../../configuration.js";
 import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
 import { SKIP_GUARDS_KEY } from "../../../decorators/skip-guards.decorator.js";
 import { ApiKeyService } from "../../users/api-key.service.js";
-import { Role } from "../../users/models/role.enum.js";
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -78,7 +77,7 @@ export class ApiKeyGuard implements CanActivate {
           "Authentication Failed: User has been deleted. Contact an Administrator to recover the User.",
         );
       }
-      if (!user.activated && user.role !== Role.ADMIN) {
+      if (!user.activated) {
         throw new NotAcceptableException(
           "Authorization Failed: User is not activated. Contact an Administrator to activate the User.",
         );
@@ -108,6 +107,7 @@ export class ApiKeyGuard implements CanActivate {
           status: "error",
           message: "Unauthorized",
         });
+        context.switchToWs().getClient<Socket>().disconnect(true);
         return false;
       }
 

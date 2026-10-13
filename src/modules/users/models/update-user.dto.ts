@@ -114,7 +114,8 @@ export class UpdateUserDto {
   @ApiPropertyOptional({
     pattern: "boolean",
     example: true,
-    description: "wether or not the user is activated. Not yet working.",
+    description:
+      "Whether the user is activated. Inactive accounts cannot authenticate, including administrators.",
   })
   activated?: boolean;
 

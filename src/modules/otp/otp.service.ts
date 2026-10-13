@@ -10,7 +10,6 @@ import { Interval } from "@nestjs/schedule";
 import { type Response } from "express";
 import ms from "ms";
 import { randomBytes } from "node:crypto";
-import { Role } from "../users/models/role.enum.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./../games/files.service.js";
 import Otp from "./models/otp.model.js";
@@ -70,10 +69,7 @@ export class OtpService {
       existingOtp.username,
       { loadRelations: false, loadDeletedEntities: false },
     );
-    if (
-      this.usersService &&
-      (!user || (!user.activated && user.role !== Role.ADMIN))
-    ) {
+    if (this.usersService && (!user || !user.activated)) {
       throw new UnauthorizedException("The download user is no longer active.");
     }
     return this.filesService.download(

@@ -24,6 +24,7 @@ describe("activity message guard order", () => {
       id: "browser-socket",
       handshake: { headers: {}, auth: { api_key: "browser-key" } },
       emit: vi.fn(),
+      disconnect: vi.fn(),
     } as unknown as Socket;
     context = {
       getHandler: () => ActivityGateway.prototype.chatHistory,

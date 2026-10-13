@@ -7,6 +7,7 @@ import { ActivityGateway } from "./activity.gateway.js";
 import { ApiKeyService } from "./api-key.service.js";
 import { ChatService } from "./chat.service.js";
 import { PlaystashUser } from "./playstash-user.entity.js";
+import { UserStatusEvents } from "./user-status.events.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 
@@ -17,7 +18,13 @@ import { UsersService } from "./users.service.js";
     forwardRef(() => GamesModule),
   ],
   controllers: [UsersController],
-  providers: [UsersService, ApiKeyService, ChatService, ActivityGateway],
+  providers: [
+    UsersService,
+    ApiKeyService,
+    ChatService,
+    ActivityGateway,
+    UserStatusEvents,
+  ],
   exports: [UsersService, ApiKeyService],
 })
 export class UsersModule {}

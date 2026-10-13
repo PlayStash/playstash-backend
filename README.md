@@ -26,6 +26,11 @@ local usernames or emails instead of automatically linking accounts. Use HTTPS
 for identity-provider endpoints. Cross-origin cookie clients require their exact
 origin in `SERVER_CORS_ALLOWED_ORIGINS`.
 
+Deactivation blocks every role, including administrators, from using sign-in,
+existing access/refresh tokens, API keys and issued download tokens. Deactivating
+or deleting an account disconnects its live chat/activity sessions. A configured
+`SERVER_ADMIN_USERNAME` is still recovered and activated on server startup.
+
 See [the security review](docs/security-audit.md) for verified fixes and scan scope.
 
 Container data directories and newly created files are private to the service

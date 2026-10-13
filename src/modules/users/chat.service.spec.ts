@@ -81,6 +81,7 @@ describe("authenticated transient chat", () => {
     users.findOneByUserIdOrFail.mockResolvedValue({
       ...other,
       activated: false,
+      role: Role.ADMIN,
     });
     await expect(
       chat.send({ recipient_user_id: 2, text: "hi" }, user),

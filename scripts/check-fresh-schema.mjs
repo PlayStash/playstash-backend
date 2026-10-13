@@ -294,6 +294,9 @@ try {
   await checkFolderTags(source, { publicGame, service, gameRepository });
   const { checkAuthIdentity } = await import("./check-auth-identity.mjs");
   await checkAuthIdentity(source);
+  const { checkAccountDeactivation } =
+    await import("./check-account-deactivation.mjs");
+  await checkAccountDeactivation(source);
   console.log(
     `${system}: ${migrations.length} migrations passed; PlayStash tables, shared metadata, access/privacy and bookmarks verified.`,
   );

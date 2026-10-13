@@ -1,6 +1,7 @@
 import { UnauthorizedException } from "@nestjs/common";
 import type { Mocked } from "vitest";
 import { FilesService } from "../games/files.service.js";
+import { Role } from "../users/models/role.enum.js";
 import { OtpService } from "./otp.service.js";
 
 describe("OtpService", () => {
@@ -37,6 +38,22 @@ describe("OtpService", () => {
   });
 
   describe("get", () => {
+    it("denies a download token issued before an administrator was deactivated", async () => {
+      const users = {
+        findOneByUsernameOrFail: vi.fn().mockResolvedValue({
+          id: 1,
+          username: "admin",
+          role: Role.ADMIN,
+          activated: false,
+        }),
+      };
+      const guarded = new OtpService(filesService, users as any);
+      const token = guarded.create("admin", 42);
+      await expect(guarded.get(token, {} as any)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(filesService.download).not.toHaveBeenCalled();
+    });
     it("should validate and consume a valid OTP", async () => {
       const mockResponse = { setHeader: vi.fn() } as any;
       const otp = service.create("testuser", 42, 7, 1024);

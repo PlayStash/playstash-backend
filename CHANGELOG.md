@@ -2,9 +2,14 @@
 
 ## 17.1.2
 
+### Breaking Changes & Migration
+
+- Deactivation blocks sign-in, existing tokens, API keys, download tokens and live chat/activity connections for every role, including administrators. -> **Activate an administrator before using that account; configured bootstrap administrators are still recovered on server startup.**
+
 ### Changes
 
 - Fixed container startup with an explicitly selected non-root user by keeping application code readable while preserving private data volumes and restrictive permissions for new files.
+- Deactivating or deleting an account immediately disconnects its live chat/activity connections and removes its presence.
 
 ## 17.1.1
 
