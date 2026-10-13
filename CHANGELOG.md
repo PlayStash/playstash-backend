@@ -1,5 +1,11 @@
 # PlayStash Backend Changelog
 
+## 17.1.2
+
+### Changes
+
+- Fixed container startup with an explicitly selected non-root user by keeping application code readable while preserving private data volumes and restrictive permissions for new files.
+
 ## 17.1.1
 
 ### Breaking Changes & Migration

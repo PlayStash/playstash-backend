@@ -44,7 +44,8 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chown -R node:node /app/dist /config /files /media /logs /db /plugins /savefiles \
-    && chmod -R u=rwX,go= /app/dist /config /files /media /logs /db /plugins /savefiles \
+    && chmod -R u=rwX,go=rX /app/dist \
+    && chmod -R u=rwX,go= /config /files /media /logs /db /plugins /savefiles \
     && sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/entrypoint.sh \
     && rm -rf /usr/local/lib/node_modules /opt/yarn* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg

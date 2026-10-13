@@ -18,7 +18,13 @@ if [ "$(id -u)" = "0" ]; then
         if ! chown -R "${PUID}:${PGID}" "$dir" 2>/dev/null; then
             echo "Warning: chown failed on $dir (possibly due to missing permissions)"
         fi
-        if ! chmod -R u=rwX,go= "$dir" 2>/dev/null; then
+        # Application code must also be readable with an explicit non-root UID.
+        # Private data stays accessible only to its configured service owner.
+        permissions='u=rwX,go='
+        if [ "$dir" = /app/dist ]; then
+            permissions='u=rwX,go=rX'
+        fi
+        if ! chmod -R "$permissions" "$dir" 2>/dev/null; then
             echo "Warning: chmod failed on $dir (possibly due to missing permissions)"
         fi
     done

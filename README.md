@@ -29,8 +29,9 @@ origin in `SERVER_CORS_ALLOWED_ORIGINS`.
 See [the security review](docs/security-audit.md) for verified fixes and scan scope.
 
 Container data directories and newly created files are private to the service
-account. Set `PUID` and `PGID` to the owner of your mounted volumes; explicitly
-managed non-root deployments must provide that account with access themselves.
+account. Application code remains readable by explicitly selected non-root users.
+Set `PUID` and `PGID` to the owner of your mounted volumes; explicitly managed
+non-root deployments must provide that account with access themselves.
 
 ## GitHub Actions
 
@@ -40,7 +41,7 @@ GitHub-hosted jobs run automatically on their declared triggers. Pull requests r
 
 This repository currently defines no self-hosted runner jobs. Any future jobs on user-installed runners must require the repository Actions variable `PLAYSTASH_RUN_SELF_HOSTED` to equal the exact value `true`; unset or `false` keeps those jobs disabled by default. Configure the variable under Settings → Secrets and variables → Actions → Variables. It does not gate GitHub-hosted jobs.
 
-Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.1` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
+Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.2` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 
