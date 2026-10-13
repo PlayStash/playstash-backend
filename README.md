@@ -28,6 +28,10 @@ origin in `SERVER_CORS_ALLOWED_ORIGINS`.
 
 See [the security review](docs/security-audit.md) for verified fixes and scan scope.
 
+Container data directories and newly created files are private to the service
+account. Set `PUID` and `PGID` to the owner of your mounted volumes; explicitly
+managed non-root deployments must provide that account with access themselves.
+
 ## GitHub Actions
 
 The repository uses `main` for stable releases and `dev` for development builds.

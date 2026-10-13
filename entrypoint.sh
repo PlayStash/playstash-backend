@@ -4,6 +4,8 @@ echo "               PlayStash"
 echo "  Original authors: Phalcode contributors"
 echo "========================================"
 set -e
+# Database API keys and save files must not be readable by other local accounts.
+umask 077
 
 echo "Starting container with PUID=${PUID} and PGID=${PGID}"
 echo "Effective UID: $(id -u), GID: $(id -g)"
@@ -16,7 +18,7 @@ if [ "$(id -u)" = "0" ]; then
         if ! chown -R "${PUID}:${PGID}" "$dir" 2>/dev/null; then
             echo "Warning: chown failed on $dir (possibly due to missing permissions)"
         fi
-        if ! chmod -R u=rwX,g=rX,o=rX "$dir" 2>/dev/null; then
+        if ! chmod -R u=rwX,go= "$dir" 2>/dev/null; then
             echo "Warning: chmod failed on $dir (possibly due to missing permissions)"
         fi
     done

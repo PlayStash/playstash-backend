@@ -4,3 +4,9 @@ node_modules
 .gitignore
 *.md
 dist
+.local
+.env*
+coverage
+coverage-target
+*.log
+*.sqlite

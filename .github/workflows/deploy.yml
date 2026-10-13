@@ -57,6 +57,11 @@ jobs:
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=server-${{ strategy.job-index }}
           cache-to: type=gha,mode=max,scope=server-${{ strategy.job-index }}
+      - name: Verify private storage in the built container
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: node scripts/check-container-privacy.mjs "$IMAGE" "$PLATFORM"
       - name: Export digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}

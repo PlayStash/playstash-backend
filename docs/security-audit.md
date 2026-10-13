@@ -39,6 +39,12 @@ Direct dependencies use compatible patch ranges. Narrow, major-preserving overri
 
 ## Boundaries
 
+Container startup restricts existing data directories and files to the configured
+service UID/GID, and sets umask `0077` for new database, API-key, configuration and
+save data. This replaces inherited world-readable database permissions on Linux
+bind mounts. The Docker build context excludes local data, environment files and
+audit output so these cannot enter exported build caches.
+
 Configured filesystem volumes, local frontend ZIP paths, OAuth providers and notification endpoints are operator-controlled trust inputs. Volume roots may be mount points or explicitly configured links, but nested storage links are rejected. These path checks do not isolate the process from a privileged local attacker concurrently replacing filesystem components; restrict write access to trusted operators and the server account.
 
 An administrator may intentionally configure a webhook on the private network. That endpoint is not subject to the public-artwork restriction: notifications already reject redirects, use a short timeout and a bounded queue, and exclude restricted games. Artwork hosted only on a private network must instead be uploaded through the authenticated media endpoint.
