@@ -106,7 +106,10 @@ jobs:
           IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           POSTGRES_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.postgres-build.outputs.digest }}
           PLATFORM: ${{ matrix.platform }}
-        run: node scripts/check-compose-deployment.mjs "$IMAGE" "$PLATFORM" "$POSTGRES_IMAGE"
+        run: |
+          docker pull --platform "$PLATFORM" "$IMAGE"
+          docker pull --platform "$PLATFORM" "$POSTGRES_IMAGE"
+          node scripts/check-compose-deployment.mjs "$IMAGE" "$PLATFORM" "$POSTGRES_IMAGE"
       - name: Export digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
