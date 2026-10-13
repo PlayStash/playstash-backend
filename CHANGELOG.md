@@ -16,6 +16,7 @@
 - Concurrent first registrations can create only one bootstrap administrator.
 - Published server releases include ready-to-run Compose files and a server setup guide; stable image updates follow `main` and keep stored data.
 - Simultaneous pushes to `main` and `dev` build both image channels without one pending branch build replacing the other.
+- Automated ARM64 server releases use native GitHub runners to prevent emulator crashes and stalled builds during dependency installation.
 
 ## 17.1.2
 
