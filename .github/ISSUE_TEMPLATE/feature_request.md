@@ -2,7 +2,6 @@
 name: 🔧 Request a Feature
 about: Do you have a Feature Request?
 labels: ["🎛️ server", "🔧 feature"]
-projects: "Phalcode/4"
 ---
 
 **Is your feature request related to a problem? Please describe.**

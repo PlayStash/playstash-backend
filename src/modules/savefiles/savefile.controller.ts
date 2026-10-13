@@ -21,6 +21,7 @@ import {
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
@@ -31,8 +32,8 @@ import configuration from "../../configuration.js";
 import { DisableApiIf } from "../../decorators/disable-api-if.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
 import { UserIdGameIdDto } from "../progresses/models/user-id-game-id.dto.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { SavefileService } from "./savefile.service.js";
 
 @Controller("savefiles")
@@ -45,6 +46,8 @@ export class SavefileController {
   constructor(private readonly savefileService: SavefileService) {}
 
   @Post("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "Upload a save file to the server",
     description:
@@ -76,7 +79,7 @@ export class SavefileController {
   )
   postSavefileByUserIdAndGameId(
     @Param() params: UserIdGameIdDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
     @Headers("X-Installation-Id") installationId: string,
     @UploadedFile(
       new ParseFilePipe({
@@ -112,6 +115,8 @@ export class SavefileController {
   }
 
   @Get("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "Download a save file from the server",
     description:
@@ -129,7 +134,7 @@ export class SavefileController {
   @MinimumRole(Role.USER)
   async getSaveFileByUserIdAndGameId(
     @Param() params: UserIdGameIdDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<StreamableFile> {
     return await this.savefileService.download(
       Number(params.user_id),
@@ -139,6 +144,8 @@ export class SavefileController {
   }
 
   @Delete("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "Delete a save file from the server",
     description:

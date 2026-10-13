@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import * as streamWeb from "node:stream/web";
 import * as semver from "semver";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 const { extractFull } = node7z;
 
 interface GitHubRelease {
@@ -20,11 +20,11 @@ interface GitHubRelease {
 export class WebUIService {
   private readonly logger = new Logger(this.constructor.name);
   private readonly githubApiUrl =
-    "https://api.github.com/repos/Phalcode/gamevault-frontend/releases";
+    "https://api.github.com/repos/PlayStash/playstash-frontend/releases";
   private compatibleVersion = "";
 
   constructor(
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   private get cachePath(): string {
@@ -88,7 +88,7 @@ export class WebUIService {
   private async fetchReleases(): Promise<GitHubRelease[]> {
     const defaultReleases = [{ tag_name: "unstable" }];
     const response = await fetch(this.githubApiUrl, {
-      headers: { "User-Agent": "GameVault-Backend" },
+      headers: { "User-Agent": "PlayStash-Backend" },
     });
     if (!response.ok) {
       this.logger.error({
@@ -228,8 +228,8 @@ export class WebUIService {
     version: string,
     forceRedownload = false,
   ): Promise<void> {
-    const downloadUrl = `https://github.com/Phalcode/gamevault-frontend/releases/download/${version}/gamevault-frontend.zip`;
-    const zipPath = join(this.cachePath, "gamevault-frontend.zip");
+    const downloadUrl = `https://github.com/PlayStash/playstash-frontend/releases/download/${version}/playstash-frontend.zip`;
+    const zipPath = join(this.cachePath, "playstash-frontend.zip");
 
     if (!forceRedownload && (await this.isCached(version))) {
       this.logger.log({
@@ -265,7 +265,7 @@ export class WebUIService {
   public async cleanCacheExceptZip(): Promise<void> {
     const cacheFiles = await fs.readdir(this.cachePath);
     for (const file of cacheFiles) {
-      if (file !== "gamevault-frontend.zip") {
+      if (file !== "playstash-frontend.zip") {
         await fs.remove(join(this.cachePath, file));
       }
     }

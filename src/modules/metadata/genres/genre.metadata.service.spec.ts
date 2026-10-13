@@ -19,11 +19,11 @@ describe("GenreMetadataService", () => {
   });
 
   describe("findByProviderSlug", () => {
-    it("should find by default gamevault slug", async () => {
+    it("should find by default playstash slug", async () => {
       await service.findByProviderSlug();
       expect(repo.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { provider_slug: "gamevault" },
+          where: { provider_slug: "playstash" },
           relations: undefined,
         }),
       );

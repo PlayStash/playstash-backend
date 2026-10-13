@@ -8,10 +8,10 @@ export class CheckUserCaseConflicts1695686400000 implements MigrationInterface {
     // Check for conflicting users with different casing for username or email
     const duplicateUsers = await queryRunner.query(`
             SELECT u.username, u.email
-            FROM gamevault_user u
+            FROM playstash_user u
             WHERE (LOWER(u.username), LOWER(u.email)) IN (
                 SELECT LOWER(username), LOWER(email)
-                FROM gamevault_user
+                FROM playstash_user
                 GROUP BY LOWER(username), LOWER(email)
                 HAVING COUNT(*) > 1
             );
@@ -19,7 +19,7 @@ export class CheckUserCaseConflicts1695686400000 implements MigrationInterface {
 
     if (duplicateUsers.length > 0) {
       throw new Error(
-        `User conflicts detected with different casing for username or email. Please roll back to GameVault Backend Version 6.0.0 and resolve the conflicts before updating to v7.0.0.\nConflicting Users: ${JSON.stringify(
+        `User conflicts detected with different casing for username or email. Please roll back to PlayStash Backend Version 6.0.0 and resolve the conflicts before updating to v7.0.0.\nConflicting Users: ${JSON.stringify(
           duplicateUsers,
           null,
           2,

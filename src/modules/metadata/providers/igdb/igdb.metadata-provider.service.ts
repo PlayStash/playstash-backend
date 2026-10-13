@@ -19,7 +19,7 @@ import { GenreMetadata } from "../../genres/genre.metadata.entity.js";
 import { PublisherMetadata } from "../../publishers/publisher.metadata.entity.js";
 import { TagMetadata } from "../../tags/tag.metadata.entity.js";
 import { MetadataProvider } from "../abstract.metadata-provider.service.js";
-import { GameVaultIgdbAgeRatingMap } from "./models/gamevault-igdb-age-rating.map.js";
+import { PlayStashIgdbAgeRatingMap } from "./models/playstash-igdb-age-rating.map.js";
 const { isEmpty, toLower } = lodash;
 
 @Injectable()
@@ -378,7 +378,7 @@ export class IgdbMetadataProviderService extends MetadataProvider {
 
     const ages = (ageRatings ?? [])
       .map((rating) =>
-        GameVaultIgdbAgeRatingMap.find(
+        PlayStashIgdbAgeRatingMap.find(
           (entry) =>
             entry.ratingName.toLowerCase() ===
             rating.rating_category?.rating?.toLowerCase(),

@@ -16,7 +16,7 @@ import {
 } from "@nestjs/swagger";
 import fsExtra from "fs-extra";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
 import { Status } from "../status/models/status.model.js";
 import { Role } from "../users/models/role.enum.js";
@@ -30,7 +30,7 @@ const { createReadStream, outputFile, pathExists } = fsExtra;
 @ApiSecurity("apikey")
 export class ConfigController {
   constructor(
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   @Get("news")

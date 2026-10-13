@@ -10,8 +10,8 @@ import { randomBytes } from "node:crypto";
 import { type VerifiedCallback } from "passport-jwt";
 import { Strategy } from "passport-oauth2";
 import type { AppConfiguration } from "../../../configuration.js";
-import { InjectGamevaultConfig } from "../../../decorators/inject-gamevault-config.decorator.js";
-import { GamevaultUser } from "../../users/gamevault-user.entity.js";
+import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { UsersService } from "../../users/users.service.js";
 import { type OidcUserInfo } from "../models/oidc-user-info.interface.js";
 import PassportUserProfile from "../models/passport-user-profile.interface.js";
@@ -24,7 +24,7 @@ export class OAuth2Strategy extends PassportStrategy(Strategy, "oauth2", 6) {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-    @InjectGamevaultConfig() config: AppConfiguration,
+    @InjectPlaystashConfig() config: AppConfiguration,
   ) {
     const { AUTH } = config;
     if (
@@ -130,7 +130,7 @@ export class OAuth2Strategy extends PassportStrategy(Strategy, "oauth2", 6) {
   }
 
   async validate(
-    req: { user: GamevaultUser },
+    req: { user: PlaystashUser },
     accessToken: string,
     refreshToken: string,
     params: any,
@@ -205,7 +205,7 @@ export class OAuth2Strategy extends PassportStrategy(Strategy, "oauth2", 6) {
 
     if (!mergedProfile.preferred_username) {
       // This username is a fallback default and can be overwritten by later spreads
-      mergedProfile.preferred_username = `GameVaultUser${Math.floor(1000 + Math.random() * 9000)}`;
+      mergedProfile.preferred_username = `PlayStashUser${Math.floor(1000 + Math.random() * 9000)}`;
       this.logger.warn({
         message:
           "Generated a random username for the user, because none was provided by the identity provider.",

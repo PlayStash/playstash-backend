@@ -2,7 +2,7 @@ import { Controller, Get, Request } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 
 import { SkipGuards } from "../../decorators/skip-guards.decorator.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { Status } from "./models/status.model.js";
 import { StatusService } from "./status.service.js";
@@ -19,7 +19,7 @@ export class StatusController {
     operationId: "getStatus",
   })
   @SkipGuards()
-  async getStatus(@Request() req?: { user: GamevaultUser }): Promise<Status> {
+  async getStatus(@Request() req?: { user: PlaystashUser }): Promise<Status> {
     return (req?.user?.role ?? 0) < Role.ADMIN
       ? this.statusService.get()
       : this.statusService.getExtensive();

@@ -17,7 +17,7 @@ import { Repository } from "typeorm";
 const { move, pathExists, remove, writeFile } = fsExtra;
 
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import { logMedia } from "../../logging.js";
 import { UsersService } from "../users/users.service.js";
 import { Media } from "./media.entity.js";
@@ -32,7 +32,7 @@ export class MediaService {
     @Inject(forwardRef(() => UsersService))
     // Cyclic service reference (ESM): intentionally loosely typed to avoid design:paramtypes TDZ
     private readonly usersService: any,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   public async isAvailable(id: number): Promise<boolean> {

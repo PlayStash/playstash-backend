@@ -18,7 +18,7 @@ import unidecode from "unidecode";
 const { copyFile, createReadStream, pathExists, stat, writeFile } = fsExtra;
 
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 
 @Injectable()
 export class DatabaseService {
@@ -27,7 +27,7 @@ export class DatabaseService {
 
   constructor(
     private readonly dataSource: DataSource,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   async backup(password: string): Promise<StreamableFile> {
@@ -140,7 +140,7 @@ export class DatabaseService {
       message: "Restoring PostgreSQL Database...",
       size: file.size,
     });
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gamevault-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "playstash-"));
     const preRestorePath = path.join(tempDir, "database_pre_restore.db");
     const restorePath = path.join(tempDir, "database_restore.db");
     try {
@@ -220,7 +220,7 @@ export class DatabaseService {
       message: "Restoring SQLITE Database...",
       size: file.size,
     });
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gamevault-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "playstash-"));
     const preRestorePath = path.join(tempDir, "database_pre_restore.db");
     try {
       if (await pathExists(`${this.config.VOLUMES.SQLITEDB}/database.sqlite`)) {
@@ -258,7 +258,7 @@ export class DatabaseService {
   private generateBackupFilepath(): string {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
-    return `/tmp/gamevault_${this.config.SERVER.VERSION}_database_backup_${timestamp}.db`;
+    return `/tmp/playstash_${this.config.SERVER.VERSION}_database_backup_${timestamp}.db`;
   }
 
   private async createStreamableFile(

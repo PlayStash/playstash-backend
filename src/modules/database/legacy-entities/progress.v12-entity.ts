@@ -3,17 +3,17 @@ import { Column, Entity, Index, ManyToOne, type Relation } from "typeorm";
 import { State } from "../../progresses/models/state.enum.js";
 import { DatabaseEntityV12 } from "./database.v12-entity.js";
 import { GameV12 } from "./game.v12-entity.js";
-import { GamevaultUserV12 } from "./gamevault-user.v12-entity.js";
+import { PlaystashUserV12 } from "./playstash-user.v12-entity.js";
 
 @Entity("v12_progress", { synchronize: false })
 export class ProgressV12 extends DatabaseEntityV12 {
   @Index()
-  @ManyToOne(() => GamevaultUserV12, (user) => user.progresses)
+  @ManyToOne(() => PlaystashUserV12, (user) => user.progresses)
   @ApiPropertyOptional({
     description: "user the progress belongs to",
-    type: () => GamevaultUserV12,
+    type: () => PlaystashUserV12,
   })
-  user?: Relation<GamevaultUserV12>;
+  user?: Relation<PlaystashUserV12>;
 
   @Index()
   @ManyToOne(() => GameV12, (game) => game.progresses)

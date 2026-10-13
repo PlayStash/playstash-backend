@@ -11,7 +11,7 @@ import fsExtra from "fs-extra";
 import { randomUUID } from "node:crypto";
 import path, { basename, dirname } from "node:path";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import { UsersService } from "../users/users.service.js";
 const { createReadStream, ensureDir, readdir, remove, stat, writeFile } =
   fsExtra;
@@ -22,7 +22,7 @@ export class SavefileService {
 
   constructor(
     private readonly usersService: UsersService,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   /**

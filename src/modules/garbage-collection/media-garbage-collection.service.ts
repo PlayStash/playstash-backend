@@ -10,7 +10,7 @@ import { toFindOptionsRelations } from "../../globals.js";
 import { Media } from "../media/media.entity.js";
 import { MediaService } from "../media/media.service.js";
 import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 const { readdir, remove } = fsExtra;
 
 @Injectable()
@@ -22,8 +22,8 @@ export class MediaGarbageCollectionService implements OnApplicationBootstrap {
     private readonly mediaRepository: Repository<Media>,
     @InjectRepository(GameMetadata)
     private readonly gameMetadataRepository: Repository<GameMetadata>,
-    @InjectRepository(GamevaultUser)
-    private readonly userRepository: Repository<GamevaultUser>,
+    @InjectRepository(PlaystashUser)
+    private readonly userRepository: Repository<PlaystashUser>,
     private readonly mediaService: MediaService,
   ) {}
 

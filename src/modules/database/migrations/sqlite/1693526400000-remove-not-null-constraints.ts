@@ -5,7 +5,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_user" (
+            CREATE TABLE "temporary_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -25,7 +25,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_user"(
+            INSERT INTO "temporary_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -55,14 +55,14 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "gamevault_user"
+            FROM "playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_user"
+            DROP TABLE "playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_user"
-                RENAME TO "gamevault_user"
+            ALTER TABLE "temporary_playstash_user"
+                RENAME TO "playstash_user"
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_e0626148aee5829fd312447001"
@@ -262,7 +262,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             CREATE INDEX "IDX_f03b89f33671086e6733828e79" ON "image" ("path")
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_user" (
+            CREATE TABLE "temporary_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -282,7 +282,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_user"(
+            INSERT INTO "temporary_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -312,14 +312,14 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "gamevault_user"
+            FROM "playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_user"
+            DROP TABLE "playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_user"
-                RENAME TO "gamevault_user"
+            ALTER TABLE "temporary_playstash_user"
+                RENAME TO "playstash_user"
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_0152ed47a9e8963b5aaceb51e7"
@@ -413,7 +413,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             CREATE INDEX "IDX_0152ed47a9e8963b5aaceb51e7" ON "game" ("title")
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_user" (
+            CREATE TABLE "temporary_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -435,7 +435,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_user"(
+            INSERT INTO "temporary_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -465,24 +465,24 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "gamevault_user"
+            FROM "playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_user"
+            DROP TABLE "playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_user"
-                RENAME TO "gamevault_user"
+            ALTER TABLE "temporary_playstash_user"
+                RENAME TO "playstash_user"
         `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
-                RENAME TO "temporary_gamevault_user"
+            ALTER TABLE "playstash_user"
+                RENAME TO "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_user" (
+            CREATE TABLE "playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -502,7 +502,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_user"(
+            INSERT INTO "playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -532,10 +532,10 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "temporary_gamevault_user"
+            FROM "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_user"
+            DROP TABLE "temporary_playstash_user"
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_0152ed47a9e8963b5aaceb51e7"
@@ -629,11 +629,11 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             CREATE INDEX "IDX_0152ed47a9e8963b5aaceb51e7" ON "game" ("title")
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
-                RENAME TO "temporary_gamevault_user"
+            ALTER TABLE "playstash_user"
+                RENAME TO "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_user" (
+            CREATE TABLE "playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -653,7 +653,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_user"(
+            INSERT INTO "playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -683,10 +683,10 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "temporary_gamevault_user"
+            FROM "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_user"
+            DROP TABLE "temporary_playstash_user"
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_f03b89f33671086e6733828e79"
@@ -886,11 +886,11 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             CREATE INDEX "IDX_e0626148aee5829fd312447001" ON "image" ("source")
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
-                RENAME TO "temporary_gamevault_user"
+            ALTER TABLE "playstash_user"
+                RENAME TO "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_user" (
+            CREATE TABLE "playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -912,7 +912,7 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_user"(
+            INSERT INTO "playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -942,10 +942,10 @@ export class RemoveNotNullConstraints1693526400000 implements MigrationInterface
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "temporary_gamevault_user"
+            FROM "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_user"
+            DROP TABLE "temporary_playstash_user"
         `);
   }
 }

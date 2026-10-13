@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomUUID } from "node:crypto";
 import { Repository } from "typeorm";
-import { GamevaultServer } from "./gamevault-server.entity.js";
+import { PlaystashServer } from "./playstash-server.entity.js";
 
 @Injectable()
 export class ServerService implements OnModuleInit {
@@ -10,8 +10,8 @@ export class ServerService implements OnModuleInit {
   private serverUuid!: string;
 
   constructor(
-    @InjectRepository(GamevaultServer)
-    private readonly repository: Repository<GamevaultServer>,
+    @InjectRepository(PlaystashServer)
+    private readonly repository: Repository<PlaystashServer>,
   ) {}
 
   async onModuleInit(): Promise<void> {

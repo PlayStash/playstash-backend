@@ -1,5 +1,5 @@
 import type { Mock } from "vitest";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { StatusEnum } from "./models/status.enum.js";
 import { StatusController } from "./status.controller.js";
@@ -22,7 +22,7 @@ describe("StatusController", () => {
 
   describe("getStatus", () => {
     it("should return basic status for non-admin users", async () => {
-      const user = new GamevaultUser();
+      const user = new PlaystashUser();
       user.role = Role.USER;
       const result = await controller.getStatus({ user });
       expect(result).toHaveProperty("status", StatusEnum.HEALTHY);
@@ -32,7 +32,7 @@ describe("StatusController", () => {
     });
 
     it("should return extensive status for admin users", async () => {
-      const user = new GamevaultUser();
+      const user = new PlaystashUser();
       user.role = Role.ADMIN;
       const result = await controller.getStatus({ user });
       expect(result).toHaveProperty("status", StatusEnum.HEALTHY);
@@ -42,7 +42,7 @@ describe("StatusController", () => {
     });
 
     it("should return basic status for guest users", async () => {
-      const user = new GamevaultUser();
+      const user = new PlaystashUser();
       user.role = Role.GUEST;
       const result = await controller.getStatus({ user });
       expect(result).toHaveProperty("server_uuid");
@@ -68,7 +68,7 @@ describe("StatusController", () => {
     it("should include server_uuid for all auth levels", async () => {
       const roles = [Role.GUEST, Role.USER, Role.EDITOR, Role.ADMIN];
       for (const role of roles) {
-        const user = new GamevaultUser();
+        const user = new PlaystashUser();
         user.role = role;
         const result = await controller.getStatus({ user });
         expect(result).toHaveProperty("server_uuid");
@@ -76,7 +76,7 @@ describe("StatusController", () => {
     });
 
     it("should return extensive status for editor users (role < ADMIN)", async () => {
-      const user = new GamevaultUser();
+      const user = new PlaystashUser();
       user.role = Role.EDITOR;
       const result = await controller.getStatus({ user });
       // EDITOR (2) < ADMIN (3), so basic status

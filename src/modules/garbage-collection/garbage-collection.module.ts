@@ -4,7 +4,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { Media } from "../media/media.entity.js";
 import { MediaModule } from "../media/media.module.js";
 import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { MediaGarbageCollectionService } from "./media-garbage-collection.service.js";
 
 @Module({
@@ -12,7 +12,7 @@ import { MediaGarbageCollectionService } from "./media-garbage-collection.servic
     MediaModule,
     TypeOrmModule.forFeature([Media]),
     TypeOrmModule.forFeature([GameMetadata]),
-    TypeOrmModule.forFeature([GamevaultUser]),
+    TypeOrmModule.forFeature([PlaystashUser]),
   ],
   controllers: [],
   providers: [MediaGarbageCollectionService],

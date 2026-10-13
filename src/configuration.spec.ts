@@ -145,7 +145,7 @@ describe("Configuration", () => {
     let tempConfigDir: string;
 
     beforeEach(() => {
-      tempConfigDir = mkdtempSync(join(tmpdir(), "gamevault-config-"));
+      tempConfigDir = mkdtempSync(join(tmpdir(), "playstash-config-"));
       process.env.VOLUMES_CONFIG = tempConfigDir;
       delete process.env.SERVER_PORT;
       vi.resetModules();

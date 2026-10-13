@@ -1,5 +1,5 @@
 services:
-  gamevault-backend:
+  playstash-backend:
     build: .
     restart: unless-stopped
     environment:

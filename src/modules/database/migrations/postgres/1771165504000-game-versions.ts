@@ -35,7 +35,7 @@ export class GameVersions1771165504000 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE game_version
       ADD CONSTRAINT FK_5a4e407c2898e29b00136632b33
-      FOREIGN KEY (game_id) REFERENCES gamevault_game(id)
+      FOREIGN KEY (game_id) REFERENCES playstash_game(id)
       ON DELETE CASCADE ON UPDATE NO ACTION;
     `);
 
@@ -61,7 +61,7 @@ export class GameVersions1771165504000 implements MigrationInterface {
         g.early_access,
         g.type::text,
         COALESCE(g.updated_at, g.created_at, now())
-      FROM gamevault_game g
+      FROM playstash_game g
       WHERE g.file_path IS NOT NULL
       ON CONFLICT (game_id, file_path) DO NOTHING;
     `);

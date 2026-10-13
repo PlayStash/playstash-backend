@@ -13,13 +13,13 @@ import {
 
 import { Session } from "../auth/session.entity.js";
 import { DatabaseEntity } from "../database/database.entity.js";
-import { GamevaultGame } from "../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
 import { Media } from "../media/media.entity.js";
 import { Progress } from "../progresses/progress.entity.js";
 import { Role } from "./models/role.enum.js";
 
 @Entity()
-export class GamevaultUser extends DatabaseEntity {
+export class PlaystashUser extends DatabaseEntity {
   @Index({ unique: true })
   @Column({ unique: true })
   @ApiProperty({ example: "JohnDoe", description: "username of the user" })
@@ -138,22 +138,22 @@ export class GamevaultUser extends DatabaseEntity {
   })
   sessions?: Relation<Session[]>;
 
-  @ManyToMany(() => GamevaultGame, (game) => game.bookmarked_users)
+  @ManyToMany(() => PlaystashGame, (game) => game.bookmarked_users)
   @JoinTable({
     name: "bookmark",
     joinColumn: {
-      name: "gamevault_user_id",
+      name: "playstash_user_id",
       referencedColumnName: "id",
     },
     inverseJoinColumn: {
-      name: "gamevault_game_id",
+      name: "playstash_game_id",
       referencedColumnName: "id",
     },
   })
   @ApiPropertyOptional({
     description: "games bookmarked by this user",
-    type: () => GamevaultGame,
+    type: () => PlaystashGame,
     isArray: true,
   })
-  bookmarked_games?: Relation<GamevaultGame[]>;
+  bookmarked_games?: Relation<PlaystashGame[]>;
 }

@@ -5,7 +5,7 @@ export class SocketSecretNotNull1698019992759 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
+            ALTER TABLE "playstash_user"
             ALTER COLUMN "socket_secret"
             SET NOT NULL
         `);
@@ -13,7 +13,7 @@ export class SocketSecretNotNull1698019992759 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
+            ALTER TABLE "playstash_user"
             ALTER COLUMN "socket_secret" DROP NOT NULL
         `);
   }

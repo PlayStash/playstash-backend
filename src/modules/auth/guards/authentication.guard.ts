@@ -2,7 +2,7 @@ import { type ExecutionContext, Injectable, Logger } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AuthGuard } from "@nestjs/passport";
 import type { AppConfiguration } from "../../../configuration.js";
-import { InjectGamevaultConfig } from "../../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
 import { SKIP_GUARDS_KEY } from "../../../decorators/skip-guards.decorator.js";
 
 @Injectable()
@@ -10,7 +10,7 @@ export class AuthenticationGuard extends AuthGuard("auth") {
   private readonly logger = new Logger(this.constructor.name);
   constructor(
     private readonly reflector: Reflector,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {
     super();
     if (this.config.TESTING.AUTHENTICATION_DISABLED) {

@@ -40,7 +40,7 @@ export class Sessions1743366638452 implements MigrationInterface {
         `);
     await queryRunner.query(`
             ALTER TABLE "session"
-            ADD CONSTRAINT "FK_30e98e8746699fb9af235410aff" FOREIGN KEY ("user_id") REFERENCES "gamevault_user"("id") ON DELETE CASCADE ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_30e98e8746699fb9af235410aff" FOREIGN KEY ("user_id") REFERENCES "playstash_user"("id") ON DELETE CASCADE ON UPDATE NO ACTION
         `);
   }
 

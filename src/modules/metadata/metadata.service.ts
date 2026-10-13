@@ -11,11 +11,11 @@ import { validateOrReject } from "class-validator";
 import lodash from "lodash";
 import { setTimeout } from "node:timers/promises";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import globals from "../../globals.js";
-import { logGamevaultGame, logMetadataProvider } from "../../logging.js";
+import { logPlaystashGame, logMetadataProvider } from "../../logging.js";
 import { GamesService } from "../games/games.service.js";
-import { GamevaultGame } from "../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
 import { GameType } from "../games/models/game-type.enum.js";
 import { GameMetadata } from "./games/game.metadata.entity.js";
 import { GameMetadataService } from "./games/game.metadata.service.js";
@@ -28,7 +28,7 @@ const { kebabCase } = lodash;
 @Injectable()
 export class MetadataService {
   private readonly logger = new Logger(this.constructor.name);
-  private readonly metadataJobs = new Map<number, GamevaultGame>();
+  private readonly metadataJobs = new Map<number, PlaystashGame>();
   private isProcessingQueue = false;
   providers: MetadataProvider[] = [];
 
@@ -37,7 +37,7 @@ export class MetadataService {
     // Cyclic service reference (ESM): intentionally loosely typed to avoid design:paramtypes TDZ
     private readonly gamesService: any,
     private readonly gameMetadataService: GameMetadataService,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   /**
@@ -111,11 +111,11 @@ export class MetadataService {
   /**
    * Checks the metadata of games and updates them if necessary.
    */
-  async addUpdateMetadataJob(game: GamevaultGame): Promise<void> {
+  async addUpdateMetadataJob(game: PlaystashGame): Promise<void> {
     if (this.metadataJobs.has(game.id)) {
       this.logger.debug({
         message: "Skipping metadata job as it is already enqueued.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
       return;
     }
@@ -142,7 +142,7 @@ export class MetadataService {
       } catch (error) {
         this.logger.warn({
           message: "Error updating metadata for game.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           error,
         });
       } finally {
@@ -162,7 +162,7 @@ export class MetadataService {
    * @param game The game to update the metadata for.
    * @returns The updated game.
    */
-  private async updateMetadata(game: GamevaultGame | undefined): Promise<void> {
+  private async updateMetadata(game: PlaystashGame | undefined): Promise<void> {
     if (!game) {
       this.logger.error({
         message: "Corresponding metadata-job was not found",
@@ -173,7 +173,7 @@ export class MetadataService {
 
     this.logger.log({
       message: "Updating metadata.",
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
     });
 
     const versionPaths = (game.versions || [])
@@ -186,7 +186,7 @@ export class MetadataService {
     if (candidatePaths.some((path) => path.includes("(NC)"))) {
       this.logger.debug({
         message: "Skipping metadata update for (NC) game.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
       return;
     }
@@ -212,7 +212,7 @@ export class MetadataService {
         ) {
           this.logger.debug({
             message: "Metadata is already up to date. Skipping.",
-            game: logGamevaultGame(game),
+            game: logPlaystashGame(game),
             provider: logMetadataProvider(provider),
           });
           continue;
@@ -222,7 +222,7 @@ export class MetadataService {
           // Waiting the specified request interval to prevent hitting rate limits before making requests to the provider
           this.logger.debug({
             message: `Delaying requests by ${provider.request_interval_ms} ms to avoid rate limits.`,
-            game: logGamevaultGame(game),
+            game: logPlaystashGame(game),
             provider: logMetadataProvider(provider),
           });
           await setTimeout(provider.request_interval_ms);
@@ -243,7 +243,7 @@ export class MetadataService {
         // If the metadata update fails, log the error and skip the update.
         this.logger.error({
           message: "Failed updating metadata for game and provider. Skipping.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           provider: logMetadataProvider(provider),
           error,
         });
@@ -256,12 +256,12 @@ export class MetadataService {
    * Checks the metadata of a single provider and updates it if necessary.
    */
   private async findMetadata(
-    game: GamevaultGame,
+    game: PlaystashGame,
     provider: MetadataProvider,
   ): Promise<void> {
     this.logger.log({
       message: "Searching for metadata.",
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
       provider: logMetadataProvider(provider),
     });
     try {
@@ -275,7 +275,7 @@ export class MetadataService {
       if (error instanceof NotFoundException) {
         this.logger.debug({
           message: "No matching game found.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           provider: logMetadataProvider(provider),
         });
         return;
@@ -329,7 +329,7 @@ export class MetadataService {
    * - For provider-only updates, skips if no provider is newer than current merged metadata
    * - Always merges when user_metadata exists (user explicitly requested changes)
    */
-  async merge(gameId: number): Promise<GamevaultGame> {
+  async merge(gameId: number): Promise<PlaystashGame> {
     const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
       loadDeletedEntities: false,
       loadRelations: ["metadata", "provider_metadata", "user_metadata"],
@@ -345,7 +345,7 @@ export class MetadataService {
 
       this.logger.warn({
         message: "No metadata sources available. Skipping merge.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
       return game;
     }
@@ -362,7 +362,7 @@ export class MetadataService {
 
       this.logger.debug({
         message: "Provider metadata unchanged. Skipping merge.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
       return game;
     }
@@ -383,7 +383,7 @@ export class MetadataService {
 
     this.logger.debug({
       message: "Metadata merged successfully.",
-      game: logGamevaultGame(mergedGame),
+      game: logPlaystashGame(mergedGame),
     });
 
     return mergedGame;
@@ -393,7 +393,7 @@ export class MetadataService {
    * Checks if merged metadata is still fresh (no provider has newer data).
    */
   private isMetadataFresh(
-    game: GamevaultGame,
+    game: PlaystashGame,
     providerMetadata: GameMetadata[],
   ): boolean {
     const effectiveTs =
@@ -409,7 +409,7 @@ export class MetadataService {
   /**
    * Creates base metadata with game file defaults.
    */
-  private buildBaseMetadata(game: GamevaultGame): GameMetadata {
+  private buildBaseMetadata(game: PlaystashGame): GameMetadata {
     const metadata = new GameMetadata();
     metadata.release_date = game.release_date;
 
@@ -452,7 +452,7 @@ export class MetadataService {
   /**
    * Removes corrupt internal provider mappings and skips unregistered providers during merge.
    */
-  private getMergeableProviderMetadata(game: GamevaultGame): {
+  private getMergeableProviderMetadata(game: PlaystashGame): {
     mergeableProviderMetadata: GameMetadata[];
     removedInvalidProviderMetadata: boolean;
   } {
@@ -474,7 +474,7 @@ export class MetadataService {
         this.logger.warn({
           message:
             "Removing invalid provider metadata mapping with reserved or missing slug.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           providerSlug: providerSlug ?? null,
         });
         continue;
@@ -486,7 +486,7 @@ export class MetadataService {
         this.logger.warn({
           message:
             "Skipping provider metadata from an unregistered provider during merge.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           providerSlug,
         });
         continue;
@@ -510,7 +510,7 @@ export class MetadataService {
    */
   private applyFileMetadata(
     base: GameMetadata,
-    game: GamevaultGame,
+    game: PlaystashGame,
   ): GameMetadata {
     return {
       ...base,
@@ -523,7 +523,7 @@ export class MetadataService {
    */
   private applyUserMetadata(
     base: GameMetadata,
-    game: GamevaultGame,
+    game: PlaystashGame,
   ): GameMetadata {
     if (!game.user_metadata) return base;
 
@@ -536,26 +536,26 @@ export class MetadataService {
   }
 
   /**
-   * Finalizes metadata with gamevault identifiers and normalizes relations.
+   * Finalizes metadata with playstash identifiers and normalizes relations.
    */
   private finalizeMetadata(
     base: GameMetadata,
-    game: GamevaultGame,
+    game: PlaystashGame,
     gameId: number,
   ): GameMetadata {
     const result = {
       ...base,
       id: game.metadata?.id ?? undefined,
-      provider_slug: "gamevault",
+      provider_slug: "playstash",
       provider_data_id: gameId.toString(),
       provider_priority: null,
     } as unknown as GameMetadata;
 
-    // Normalize relation entities to use gamevault as provider
-    this.normalizeRelations(result.genres, "gamevault");
-    this.normalizeRelations(result.tags, "gamevault");
-    this.normalizeRelations(result.developers, "gamevault");
-    this.normalizeRelations(result.publishers, "gamevault");
+    // Normalize relation entities to use playstash as provider
+    this.normalizeRelations(result.genres, "playstash");
+    this.normalizeRelations(result.tags, "playstash");
+    this.normalizeRelations(result.developers, "playstash");
+    this.normalizeRelations(result.publishers, "playstash");
 
     return result;
   }
@@ -612,7 +612,7 @@ export class MetadataService {
     );
     this.logger.log({
       message: "Unmapped metadata provider from a game.",
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
       providerSlug,
     });
 
@@ -624,7 +624,7 @@ export class MetadataService {
       game.metadata = null;
       this.logger.debug({
         message: "Deleted merged metadata for a game.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         providerSlug,
       });
     }
@@ -638,7 +638,7 @@ export class MetadataService {
       game.sort_title = this.gamesService.generateSortTitle(game.title);
       this.logger.log({
         message: "Deleted user metadata from a game.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         providerSlug,
       });
     }
@@ -659,7 +659,7 @@ export class MetadataService {
     providerSlug: string,
     providerGameId: string,
     providerPriorityOverride?: number,
-  ): Promise<GamevaultGame> {
+  ): Promise<PlaystashGame> {
     const provider = this.getProviderBySlugOrFail(providerSlug);
 
     try {
@@ -692,7 +692,7 @@ export class MetadataService {
       ) {
         this.logger.debug({
           message: "Adding new metadata provider mapping to game",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           provider_metadata: game.provider_metadata,
           new_provider_metadata: gameMetadata,
         });
@@ -703,7 +703,7 @@ export class MetadataService {
       // Log successful mapping
       this.logger.log({
         message: "Successfully mapped metadata provider to game",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         providerSlug,
       });
 
@@ -713,7 +713,7 @@ export class MetadataService {
       this.logger.error({
         message: "Failed to map game to metadata provider",
         provider: logMetadataProvider(provider),
-        game: logGamevaultGame({ id: gameId } as GamevaultGame),
+        game: logPlaystashGame({ id: gameId } as PlaystashGame),
         error,
       });
 

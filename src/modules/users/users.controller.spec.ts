@@ -1,6 +1,6 @@
 import type { Mocked } from "vitest";
 import { ApiKeyService } from "./api-key.service.js";
-import { GamevaultUser } from "./gamevault-user.entity.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { Role } from "./models/role.enum.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
@@ -11,9 +11,9 @@ describe("UsersController", () => {
   let apiKeyService: Mocked<ApiKeyService>;
 
   const createMockUser = (
-    overrides: Partial<GamevaultUser> = {},
-  ): GamevaultUser => {
-    const user = new GamevaultUser();
+    overrides: Partial<PlaystashUser> = {},
+  ): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.role = Role.USER;

@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { Repository } from "typeorm";
 import configuration from "../../configuration.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { Media } from "./media.entity.js";
 import { MediaService } from "./media.service.js";
@@ -35,8 +35,8 @@ vi.mock("../../logging.js", () => ({
   __esModule: true,
   default: { log: vi.fn(), error: vi.fn(), warn: vi.fn() },
   logMedia: vi.fn((m) => ({ id: m?.id, file_path: m?.file_path })),
-  logGamevaultGame: vi.fn(),
-  logGamevaultUser: vi.fn(),
+  logPlaystashGame: vi.fn(),
+  logPlaystashUser: vi.fn(),
   stream: { write: vi.fn() },
 }));
 
@@ -141,7 +141,7 @@ describe("MediaService", () => {
 
   describe("upload", () => {
     it("should upload a valid media file", async () => {
-      const mockUser = new GamevaultUser();
+      const mockUser = new PlaystashUser();
       mockUser.username = "testuser";
       usersService.findOneByUsernameOrFail.mockResolvedValue(mockUser);
 
@@ -171,7 +171,7 @@ describe("MediaService", () => {
     });
 
     it("should throw BadRequestException for unsupported file type", async () => {
-      const mockUser = new GamevaultUser();
+      const mockUser = new PlaystashUser();
       usersService.findOneByUsernameOrFail.mockResolvedValue(mockUser);
 
       (fileTypeChecker.detectFile as Mock).mockReturnValue({
@@ -192,7 +192,7 @@ describe("MediaService", () => {
     });
 
     it("should throw BadRequestException when file type cannot be detected", async () => {
-      const mockUser = new GamevaultUser();
+      const mockUser = new PlaystashUser();
       usersService.findOneByUsernameOrFail.mockResolvedValue(mockUser);
 
       (fileTypeChecker.detectFile as Mock).mockReturnValue({

@@ -1,8 +1,10 @@
 import { type INestApplication } from "@nestjs/common";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
+import { getDataSourceToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
 
 import { AppModule } from "./app.module.js";
+import { createPlaystashApiDocument } from "./openapi.js";
 
 /**
  * Extracts the literal names of the path parameters from a route template.
@@ -24,9 +26,13 @@ describe("OpenAPI specification", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(getDataSourceToken())
+      .useValue(new DataSource({ type: "postgres" }))
+      .compile();
 
     app = moduleRef.createNestApplication();
+    app.setGlobalPrefix("api");
     // We intentionally skip `app.init()`: booting runs module
     // `OnApplicationBootstrap` hooks (file index, admin seeding, ...) that
     // require a running database. The OpenAPI document is derived purely from
@@ -38,18 +44,7 @@ describe("OpenAPI specification", () => {
   });
 
   it("declares a path parameter for every path template placeholder", () => {
-    const document = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder()
-        .setTitle("GameVault Backend Server")
-        .setVersion("test")
-        .addBearerAuth(
-          { type: "http", scheme: "bearer", bearerFormat: "JWT" },
-          "bearer",
-        )
-        .addBasicAuth({ type: "http", scheme: "basic" }, "basic")
-        .build(),
-    );
+    const document = createPlaystashApiDocument(app);
 
     const errors: string[] = [];
 

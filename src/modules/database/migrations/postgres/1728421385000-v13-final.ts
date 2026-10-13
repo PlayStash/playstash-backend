@@ -3,7 +3,7 @@ import fsExtra from "fs-extra";
 import lodash from "lodash";
 import { randomBytes } from "node:crypto";
 import { In, MigrationInterface, type QueryRunner } from "typeorm";
-import { GamevaultGame } from "../../../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../../../games/playstash-game.entity.js";
 import { Media } from "../../../media/media.entity.js";
 import { DeveloperMetadata } from "../../../metadata/developers/developer.metadata.entity.js";
 import { GameMetadata } from "../../../metadata/games/game.metadata.entity.js";
@@ -12,9 +12,9 @@ import { PublisherMetadata } from "../../../metadata/publishers/publisher.metada
 import { TagMetadata } from "../../../metadata/tags/tag.metadata.entity.js";
 import { DeveloperV12 } from "../../legacy-entities/developer.v12-entity.js";
 import { GameV12 } from "../../legacy-entities/game.v12-entity.js";
-import { GamevaultUserV12 } from "../../legacy-entities/gamevault-user.v12-entity.js";
 import { GenreV12 } from "../../legacy-entities/genre.v12-entity.js";
 import { ImageV12 } from "../../legacy-entities/image.v12-entity.js";
+import { PlaystashUserV12 } from "../../legacy-entities/playstash-user.v12-entity.js";
 import { ProgressV12 } from "../../legacy-entities/progress.v12-entity.js";
 import { PublisherV12 } from "../../legacy-entities/publisher.v12-entity.js";
 import { TagV12 } from "../../legacy-entities/tag.v12-entity.js";
@@ -39,7 +39,7 @@ export class V13Final1728421385000 implements MigrationInterface {
         - Be sure to back up your data thoroughly before migrating, and contact us if you encounter any migration errors.
         - The migration process may take up to 30 minutes or even longer for larger servers. During this time, clients will not be able to use the server.
         - The container might appear as UNHEALTHY during the migration. This is expected behavior, and no action is needed. Let it complete the process.
-        - Make sure to disable any Docker auto-heal features for GameVault, as they might terminate the container during the migration.
+        - Make sure to disable any Docker auto-heal features for PlayStash, as they might terminate the container during the migration.
         - Restarting the server will restart the migration.
         - Even when the server is running after the migration, it will take a while until you see all your game data. Be patient and check the logs for inactivity.`,
     );
@@ -48,6 +48,19 @@ export class V13Final1728421385000 implements MigrationInterface {
       `Step ${currentStep}/${totalSteps}: Renaming tables - Running...`,
     );
     await this.part1_rename_tables(queryRunner);
+    // Index names are shared by the entire schema. Preserve archived indexes
+    // under distinct names before creating the current PlayStash tables.
+    const archivedIndexes: { name: string }[] = await queryRunner.query(
+      `SELECT indexname AS name FROM pg_indexes
+       WHERE schemaname = current_schema()
+       AND substr(tablename, 1, 4) = 'v12_'`,
+    );
+    for (const index of archivedIndexes) {
+      const archivedName = `v12_${index.name}`;
+      await queryRunner.query(
+        `ALTER INDEX "${index.name.replaceAll('"', '""')}" RENAME TO "${archivedName.replaceAll('"', '""')}"`,
+      );
+    }
     this.logger.log(
       `Step ${currentStep}/${totalSteps}: Renaming tables - Completed`,
     );
@@ -126,7 +139,7 @@ export class V13Final1728421385000 implements MigrationInterface {
       `DROP INDEX IF EXISTS "IDX_f03b89f33671086e6733828e79"`,
     );
     await queryRunner.renameTable("game", "v12_game");
-    await queryRunner.renameTable("gamevault_user", "v12_gamevault_user");
+    await queryRunner.renameTable("playstash_user", "v12_playstash_user");
 
     await queryRunner.renameTable("progress", "v12_progress");
     await queryRunner.renameTable("developer", "v12_developer");
@@ -138,8 +151,8 @@ export class V13Final1728421385000 implements MigrationInterface {
     await queryRunner.renameTable("bookmark", "v12_bookmark");
     await queryRunner.renameColumn(
       "v12_bookmark",
-      "gamevault_user_id",
-      "v12_gamevault_user_id",
+      "playstash_user_id",
+      "v12_playstash_user_id",
     );
     await queryRunner.renameColumn("v12_bookmark", "game_id", "v12_game_id");
 
@@ -220,7 +233,7 @@ export class V13Final1728421385000 implements MigrationInterface {
     //Final Cleanup Measures
     await queryRunner.query(`DROP SEQUENCE IF EXISTS crackpipe_user_id_seq`);
     await queryRunner.query(
-      `ALTER SEQUENCE IF EXISTS gamevault_user_id_seq RENAME TO v12_gamevault_user_id_seq`,
+      `ALTER SEQUENCE IF EXISTS playstash_user_id_seq RENAME TO v12_playstash_user_id_seq`,
     );
     await queryRunner.query(
       `ALTER SEQUENCE IF EXISTS image_id_seq RENAME TO v12_image_id_seq`,
@@ -230,9 +243,9 @@ export class V13Final1728421385000 implements MigrationInterface {
   private async part2_generate_new_schema(queryRunner: QueryRunner) {
     this.logger.log("Creating ENUM type: progress_state_enum");
     await queryRunner.query(`
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'progress_state_enum' AND typtype = 'e') THEN 
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'progress_state_enum' AND typtype = 'e') THEN
             CREATE TYPE "public"."progress_state_enum" AS ENUM(
                 'UNPLAYED',
                 'INFINITE',
@@ -241,32 +254,32 @@ export class V13Final1728421385000 implements MigrationInterface {
                 'ABORTED_TEMPORARY',
                 'ABORTED_PERMANENT'
             );
-        END IF; 
-    END $$;            
+        END IF;
+    END $$;
   `);
 
-    this.logger.log("Creating ENUM type: gamevault_game_type_enum");
+    this.logger.log("Creating ENUM type: playstash_game_type_enum");
     await queryRunner.query(`
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'gamevault_game_type_enum' AND typtype = 'e') THEN 
-            CREATE TYPE "public"."gamevault_game_type_enum" AS ENUM(
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'playstash_game_type_enum' AND typtype = 'e') THEN
+            CREATE TYPE "public"."playstash_game_type_enum" AS ENUM(
                 'UNDETECTABLE',
                 'WINDOWS_SETUP',
                 'WINDOWS_PORTABLE',
                 'LINUX_PORTABLE'
             );
-        END IF; 
+        END IF;
     END $$;
   `);
 
-    this.logger.log("Creating ENUM type: gamevault_user_role_enum");
+    this.logger.log("Creating ENUM type: playstash_user_role_enum");
     await queryRunner.query(`
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'gamevault_user_role_enum' AND typtype = 'e') THEN 
-            CREATE TYPE "public"."gamevault_user_role_enum" AS ENUM('0', '1', '2', '3'); 
-        END IF; 
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'playstash_user_role_enum' AND typtype = 'e') THEN
+            CREATE TYPE "public"."playstash_user_role_enum" AS ENUM('0', '1', '2', '3');
+        END IF;
     END $$;
   `);
 
@@ -397,9 +410,9 @@ export class V13Final1728421385000 implements MigrationInterface {
         )
     `);
 
-    this.logger.log("Creating table: gamevault_game");
+    this.logger.log("Creating table: playstash_game");
     await queryRunner.query(`
-        CREATE TABLE "gamevault_game" (
+        CREATE TABLE "playstash_game" (
             "id" SERIAL NOT NULL,
             "created_at" TIMESTAMP NOT NULL DEFAULT now(),
             "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
@@ -413,7 +426,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             "release_date" TIMESTAMP,
             "early_access" boolean NOT NULL DEFAULT false,
             "download_count" integer NOT NULL DEFAULT '0',
-            "type" "public"."gamevault_game_type_enum" NOT NULL DEFAULT 'UNDETECTABLE',
+            "type" "public"."playstash_game_type_enum" NOT NULL DEFAULT 'UNDETECTABLE',
             "user_metadata_id" integer,
             "metadata_id" integer,
             CONSTRAINT "UQ_91d454956bd20f46b646b05b91f" UNIQUE ("file_path"),
@@ -423,9 +436,9 @@ export class V13Final1728421385000 implements MigrationInterface {
         )
     `);
 
-    this.logger.log("Creating table: gamevault_user");
+    this.logger.log("Creating table: playstash_user");
     await queryRunner.query(`
-        CREATE TABLE "gamevault_user" (
+        CREATE TABLE "playstash_user" (
             "id" SERIAL NOT NULL,
             "created_at" TIMESTAMP NOT NULL DEFAULT now(),
             "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
@@ -439,7 +452,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             "last_name" character varying,
             "birth_date" TIMESTAMP,
             "activated" boolean NOT NULL DEFAULT false,
-            "role" "public"."gamevault_user_role_enum" NOT NULL DEFAULT '1',
+            "role" "public"."playstash_user_role_enum" NOT NULL DEFAULT '1',
             "avatar_id" integer,
             "background_id" integer,
             CONSTRAINT "UQ_4c835305e86b28e416cfe13dace" UNIQUE ("username"),
@@ -451,13 +464,13 @@ export class V13Final1728421385000 implements MigrationInterface {
     `);
 
     this.logger.log(
-      "Creating join table: game_metadata_gamevault_games_gamevault_game",
+      "Creating join table: game_metadata_playstash_games_playstash_game",
     );
     await queryRunner.query(`
-        CREATE TABLE "game_metadata_gamevault_games_gamevault_game" (
+        CREATE TABLE "game_metadata_playstash_games_playstash_game" (
             "game_metadata_id" integer NOT NULL,
-            "gamevault_game_id" integer NOT NULL,
-            CONSTRAINT "PK_5b1fb42d2970bc93bc217cea7a6" PRIMARY KEY ("game_metadata_id", "gamevault_game_id")
+            "playstash_game_id" integer NOT NULL,
+            CONSTRAINT "PK_5b1fb42d2970bc93bc217cea7a6" PRIMARY KEY ("game_metadata_id", "playstash_game_id")
         )
     `);
 
@@ -502,22 +515,22 @@ export class V13Final1728421385000 implements MigrationInterface {
     `);
 
     this.logger.log(
-      "Creating join table: gamevault_game_provider_metadata_game_metadata",
+      "Creating join table: playstash_game_provider_metadata_game_metadata",
     );
     await queryRunner.query(`
-        CREATE TABLE "gamevault_game_provider_metadata_game_metadata" (
-            "gamevault_game_id" integer NOT NULL,
+        CREATE TABLE "playstash_game_provider_metadata_game_metadata" (
+            "playstash_game_id" integer NOT NULL,
             "game_metadata_id" integer NOT NULL,
-            CONSTRAINT "PK_ce0d864677026881405540a60b3" PRIMARY KEY ("gamevault_game_id", "game_metadata_id")
+            CONSTRAINT "PK_ce0d864677026881405540a60b3" PRIMARY KEY ("playstash_game_id", "game_metadata_id")
         )
     `);
 
     this.logger.log("Creating join table: bookmark");
     await queryRunner.query(`
         CREATE TABLE "bookmark" (
-            "gamevault_user_id" integer NOT NULL,
-            "gamevault_game_id" integer NOT NULL,
-            CONSTRAINT "PK_c0f9972ee1277cb6da40463192b" PRIMARY KEY ("gamevault_user_id", "gamevault_game_id")
+            "playstash_user_id" integer NOT NULL,
+            "playstash_game_id" integer NOT NULL,
+            CONSTRAINT "PK_c0f9972ee1277cb6da40463192b" PRIMARY KEY ("playstash_user_id", "playstash_game_id")
         )
     `);
 
@@ -615,31 +628,31 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_feaddf361921db1df3a6fe3965" ON "progress" ("game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "gamevault_game" ("id")
+            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "playstash_game" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "gamevault_game" ("file_path")
+            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "playstash_game" ("file_path")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "gamevault_game" ("release_date")
+            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "playstash_game" ("release_date")
         `);
     await queryRunner.query(`
-            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "gamevault_user" ("username")
+            CREATE UNIQUE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "playstash_user" ("username")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "gamevault_user" ("socket_secret")
+            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "playstash_user" ("socket_secret")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "gamevault_user" ("birth_date")
+            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "playstash_user" ("birth_date")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_gamevault_games_gamevault_game" ("game_metadata_id")
+            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_playstash_games_playstash_game" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_gamevault_games_gamevault_game" ("gamevault_game_id")
+            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_playstash_games_playstash_game" ("playstash_game_id")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_6d9f174cdbce41bb5b934271a9" ON "game_metadata_publishers_publisher_metadata" ("game_metadata_id")
@@ -666,20 +679,20 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_0482ce35adf40c9128eaa1ae89" ON "game_metadata_genres_genre_metadata" ("genre_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "gamevault_game_provider_metadata_game_metadata" ("gamevault_game_id")
+            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "playstash_game_provider_metadata_game_metadata" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "gamevault_game_provider_metadata_game_metadata" ("game_metadata_id")
+            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "playstash_game_provider_metadata_game_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("gamevault_game_id")
+            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("playstash_game_id")
         `);
     await queryRunner.query(`
             ALTER TABLE "media"
-            ADD CONSTRAINT "FK_8bd1ad5f79df58cfd7ad9c42fb5" FOREIGN KEY ("uploader_id") REFERENCES "gamevault_user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_8bd1ad5f79df58cfd7ad9c42fb5" FOREIGN KEY ("uploader_id") REFERENCES "playstash_user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
             ALTER TABLE "game_metadata"
@@ -691,37 +704,37 @@ export class V13Final1728421385000 implements MigrationInterface {
         `);
     await queryRunner.query(`
             ALTER TABLE "progress"
-            ADD CONSTRAINT "FK_ddcaca3a9db9d77105d51c02c24" FOREIGN KEY ("user_id") REFERENCES "gamevault_user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_ddcaca3a9db9d77105d51c02c24" FOREIGN KEY ("user_id") REFERENCES "playstash_user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
             ALTER TABLE "progress"
-            ADD CONSTRAINT "FK_feaddf361921db1df3a6fe3965a" FOREIGN KEY ("game_id") REFERENCES "gamevault_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_feaddf361921db1df3a6fe3965a" FOREIGN KEY ("game_id") REFERENCES "playstash_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game"
+            ALTER TABLE "playstash_game"
             ADD CONSTRAINT "FK_edc9b16a9e16d394b2ca3b49b12" FOREIGN KEY ("user_metadata_id") REFERENCES "game_metadata"("id") ON DELETE
             SET NULL ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game"
+            ALTER TABLE "playstash_game"
             ADD CONSTRAINT "FK_aab0797ae3873a5ef2817d09891" FOREIGN KEY ("metadata_id") REFERENCES "game_metadata"("id") ON DELETE
             SET NULL ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
+            ALTER TABLE "playstash_user"
             ADD CONSTRAINT "FK_872748cf76003216d011ae0febb" FOREIGN KEY ("avatar_id") REFERENCES "media"("id") ON DELETE CASCADE ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
+            ALTER TABLE "playstash_user"
             ADD CONSTRAINT "FK_0bd4a25fe304500108695576666" FOREIGN KEY ("background_id") REFERENCES "media"("id") ON DELETE CASCADE ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "game_metadata_gamevault_games_gamevault_game"
+            ALTER TABLE "game_metadata_playstash_games_playstash_game"
             ADD CONSTRAINT "FK_178abeeb628ebcdb70239c08d46" FOREIGN KEY ("game_metadata_id") REFERENCES "game_metadata"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
     await queryRunner.query(`
-            ALTER TABLE "game_metadata_gamevault_games_gamevault_game"
-            ADD CONSTRAINT "FK_c5afe975cb06f9624d5f5aa8ff7" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ALTER TABLE "game_metadata_playstash_games_playstash_game"
+            ADD CONSTRAINT "FK_c5afe975cb06f9624d5f5aa8ff7" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
             ALTER TABLE "game_metadata_publishers_publisher_metadata"
@@ -756,20 +769,20 @@ export class V13Final1728421385000 implements MigrationInterface {
             ADD CONSTRAINT "FK_0482ce35adf40c9128eaa1ae894" FOREIGN KEY ("genre_metadata_id") REFERENCES "genre_metadata"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game_provider_metadata_game_metadata"
-            ADD CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game"("id") ON DELETE CASCADE ON UPDATE CASCADE
+            ALTER TABLE "playstash_game_provider_metadata_game_metadata"
+            ADD CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game_provider_metadata_game_metadata"
+            ALTER TABLE "playstash_game_provider_metadata_game_metadata"
             ADD CONSTRAINT "FK_0b9f583ebc16b0bb8cbfaf00f8f" FOREIGN KEY ("game_metadata_id") REFERENCES "game_metadata"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
-            ADD CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("gamevault_user_id") REFERENCES "gamevault_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
+            ADD CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("playstash_user_id") REFERENCES "playstash_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
-            ADD CONSTRAINT "FK_3c8d93fdd9e34a97f5a5903129b" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            ADD CONSTRAINT "FK_3c8d93fdd9e34a97f5a5903129b" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
   }
 
@@ -896,7 +909,7 @@ export class V13Final1728421385000 implements MigrationInterface {
       `DROP TABLE IF EXISTS "v12_game_tags_v12_tag" CASCADE`,
     );
     await queryRunner.query(
-      `DROP TABLE IF EXISTS "v12_gamevault_user" CASCADE`,
+      `DROP TABLE IF EXISTS "v12_playstash_user" CASCADE`,
     );
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_genre" CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_image" CASCADE`);
@@ -908,23 +921,23 @@ export class V13Final1728421385000 implements MigrationInterface {
 
   private async part5_sync(queryRunner: QueryRunner) {
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user" 
+            ALTER TABLE "playstash_user"
             DROP CONSTRAINT IF EXISTS "UQ_e0da4bbf1074bca2d980a810771"
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
+            ALTER TABLE "playstash_user"
             ADD CONSTRAINT "UQ_e0da4bbf1074bca2d980a810771" UNIQUE ("socket_secret")
         `);
     await queryRunner.query(`
-            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "gamevault_user" ("username")
+            CREATE UNIQUE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "playstash_user" ("username")
         `);
   }
 
   private async part6_sorting_title(queryRunner: QueryRunner) {
-    const gameRepository = queryRunner.manager.getRepository("gamevault_game");
+    const gameRepository = queryRunner.manager.getRepository("playstash_game");
 
     // Fetch all games
     const games = await gameRepository.find({
@@ -950,8 +963,8 @@ export class V13Final1728421385000 implements MigrationInterface {
       "genre_metadata",
       "developer_metadata",
       "publisher_metadata",
-      "gamevault_game",
-      "gamevault_user",
+      "playstash_game",
+      "playstash_user",
       "progress",
     ];
     for (const tableName of tableNames) {
@@ -1023,7 +1036,7 @@ export class V13Final1728421385000 implements MigrationInterface {
       });
       await queryRunner.query(
         `
-      INSERT INTO "tag_metadata"("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name") 
+      INSERT INTO "tag_metadata"("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name")
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `,
         [
@@ -1058,7 +1071,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       await queryRunner.query(
         `
-        INSERT INTO "genre_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name") 
+        INSERT INTO "genre_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name")
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
         [
@@ -1093,7 +1106,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       await queryRunner.query(
         `
-        INSERT INTO "developer_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name") 
+        INSERT INTO "developer_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name")
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
         [
@@ -1128,7 +1141,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       await queryRunner.query(
         `
-        INSERT INTO "publisher_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name") 
+        INSERT INTO "publisher_metadata" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "provider_slug", "provider_data_id", "name")
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `,
         [
@@ -1169,7 +1182,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       await queryRunner.query(
         `
-        INSERT INTO "gamevault_game" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "file_path", "size", "title", "sort_title", "version", "release_date", "early_access", "download_count", "type", "user_metadata_id", "metadata_id")
+        INSERT INTO "playstash_game" ("id", "created_at", "updated_at", "deleted_at", "entity_version", "file_path", "size", "title", "sort_title", "version", "release_date", "early_access", "download_count", "type", "user_metadata_id", "metadata_id")
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, DEFAULT, $9, $10, $11, $12, $13, DEFAULT, DEFAULT)
         `,
         [
@@ -1189,7 +1202,7 @@ export class V13Final1728421385000 implements MigrationInterface {
         ],
       );
 
-      const migratedGame = await queryRunner.manager.findOne(GamevaultGame, {
+      const migratedGame = await queryRunner.manager.findOne(PlaystashGame, {
         where: { id: game.id },
         relations: {
           progresses: { user: true },
@@ -1203,7 +1216,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       if (!migratedGame) {
         throw new Error(
-          `Migrated GamevaultGame with id ${game.id} could not be re-fetched.`,
+          `Migrated PlaystashGame with id ${game.id} could not be re-fetched.`,
         );
       }
 
@@ -1236,7 +1249,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             background: background ?? undefined,
           });
           migratedGame.user_metadata = userMetadata;
-          await queryRunner.manager.save(GamevaultGame, migratedGame);
+          await queryRunner.manager.save(PlaystashGame, migratedGame);
           this.logger.log({
             message: `User metadata saved successfully. Metadata ID: ${userMetadata.id}, Title: ${userMetadata.title}`,
           });
@@ -1327,7 +1340,7 @@ export class V13Final1728421385000 implements MigrationInterface {
       }
 
       const newGame = await queryRunner.manager.save(
-        GamevaultGame,
+        PlaystashGame,
         migratedGame,
       );
       this.logger.log({
@@ -1338,7 +1351,7 @@ export class V13Final1728421385000 implements MigrationInterface {
   }
 
   private async migrateUsers(queryRunner: QueryRunner): Promise<void> {
-    const users = await queryRunner.manager.find(GamevaultUserV12, {
+    const users = await queryRunner.manager.find(PlaystashUserV12, {
       withDeleted: true,
       select: {
         id: true,
@@ -1393,7 +1406,7 @@ export class V13Final1728421385000 implements MigrationInterface {
 
       await queryRunner.query(
         `
-        INSERT INTO "gamevault_user" ("created_at", "updated_at", "deleted_at", "entity_version", "username", "password", "socket_secret", "email", "first_name", "last_name", "birth_date", "activated", "role", "avatar_id", "background_id", "id")
+        INSERT INTO "playstash_user" ("created_at", "updated_at", "deleted_at", "entity_version", "username", "password", "socket_secret", "email", "first_name", "last_name", "birth_date", "activated", "role", "avatar_id", "background_id", "id")
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, DEFAULT, $11, $12, $13, $14, $15)
         `,
         [
@@ -1420,8 +1433,8 @@ export class V13Final1728421385000 implements MigrationInterface {
   private async migrateBookmarks(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `
-      INSERT INTO "bookmark" ("gamevault_user_id", "gamevault_game_id")
-      SELECT "v12_gamevault_user_id", "v12_game_id" FROM "v12_bookmark"
+      INSERT INTO "bookmark" ("playstash_user_id", "playstash_game_id")
+      SELECT "v12_playstash_user_id", "v12_game_id" FROM "v12_bookmark"
       `,
     );
   }

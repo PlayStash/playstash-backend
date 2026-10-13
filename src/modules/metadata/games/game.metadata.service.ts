@@ -30,7 +30,7 @@ export class GameMetadataService {
   ) {}
 
   async findByProviderSlug(
-    provider_slug: string = "gamevault",
+    provider_slug: string = "playstash",
     options: FindOptions = DEFAULT_METADATA_OPTIONS,
   ): Promise<GameMetadata[]> {
     let relationPaths: string[] = [];

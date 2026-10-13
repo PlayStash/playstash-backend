@@ -13,7 +13,7 @@ export abstract class DatabaseEntityV12 {
   @PrimaryGeneratedColumn()
   @ApiProperty({
     example: 1,
-    description: "Unique gamevault-identifier of the entity",
+    description: "Unique playstash-identifier of the entity",
   })
   id!: number;
 

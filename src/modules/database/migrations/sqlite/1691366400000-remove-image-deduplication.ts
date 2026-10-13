@@ -21,20 +21,20 @@ export class RemoveImageDeduplication1691366400000 implements MigrationInterface
       DROP COLUMN last_accessed_at;`);
 
     // Step 3: Change Foreign Keys
-    const gamevaultUserForeignKeysToDrop = [
+    const playstashUserForeignKeysToDrop = [
       "FK_3a56876605551fa369cbcd09c41",
       "FK_4a135b04a00cf3e3653cd585334",
       "FK_c1779b9b22212754248aa404bad",
       "FK_4b83e27ed50c1e183a69fceef68",
     ];
 
-    for (const foreignKey of gamevaultUserForeignKeysToDrop) {
+    for (const foreignKey of playstashUserForeignKeysToDrop) {
       try {
-        await queryRunner.dropForeignKey("gamevault_user", foreignKey);
+        await queryRunner.dropForeignKey("playstash_user", foreignKey);
       } catch {}
     }
 
-    await queryRunner.createForeignKeys("gamevault_user", [
+    await queryRunner.createForeignKeys("playstash_user", [
       new TableForeignKey({
         columnNames: ["profile_picture_id"],
         referencedColumnNames: ["id"],
@@ -93,15 +93,15 @@ export class RemoveImageDeduplication1691366400000 implements MigrationInterface
 
     // Step 3: Change Foreign Keys
     await queryRunner.dropForeignKey(
-      "gamevault_user",
+      "playstash_user",
       "FK_3a56876605551fa369cbcd09c41",
     );
     await queryRunner.dropForeignKey(
-      "gamevault_user",
+      "playstash_user",
       "FK_4a135b04a00cf3e3653cd585334",
     );
 
-    await queryRunner.createForeignKeys("gamevault_user", [
+    await queryRunner.createForeignKeys("playstash_user", [
       new TableForeignKey({
         columnNames: ["profile_picture_id"],
         referencedColumnNames: ["id"],

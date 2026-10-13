@@ -160,7 +160,7 @@ export default {
     "video/mpeg", // MPEG
     "video/3gpp", // 3GP
   ],
-  RESERVED_PROVIDER_SLUGS: ["gamevault", "user"],
+  RESERVED_PROVIDER_SLUGS: ["playstash", "user"],
 };
 
 export interface FindOptions {
@@ -191,11 +191,11 @@ export const DEFAULT_METADATA_OPTIONS: FindOptions = {
   loadRelations: false,
 };
 
-export interface GameVaultPluginModule {
-  metadata: GameVaultPluginModuleMetadataV1;
+export interface PlayStashPluginModule {
+  metadata: PlayStashPluginModuleMetadataV1;
 }
 
-export interface GameVaultPluginModuleMetadataV1 {
+export interface PlayStashPluginModuleMetadataV1 {
   // Name of the Plugin.
   name: string;
   // Your Name, Email,Username or Company of the author.
@@ -211,5 +211,5 @@ export interface GameVaultPluginModuleMetadataV1 {
   // Some keywords to describe the Plugin.
   keywords?: string[];
   // Dependencies of the Plugin. (Plugins needed to use this Plugin)
-  dependencies?: GameVaultPluginModuleMetadataV1[];
+  dependencies?: PlayStashPluginModuleMetadataV1[];
 }

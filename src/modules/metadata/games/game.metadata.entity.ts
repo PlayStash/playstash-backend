@@ -35,7 +35,7 @@ export class GameMetadata extends DatabaseEntity implements Metadata {
   })
   @IsNotIn(globals.RESERVED_PROVIDER_SLUGS, {
     message:
-      "Invalid slug: The terms 'gamevault' and 'user' are reserved slugs.",
+      "Invalid slug: The terms 'playstash' and 'user' are reserved slugs.",
   })
   @ApiProperty({
     description:

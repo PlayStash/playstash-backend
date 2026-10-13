@@ -10,13 +10,13 @@ import { type Observable } from "rxjs";
 import { tap } from "rxjs/operators";
 
 import type { AppConfiguration } from "../configuration.js";
-import { InjectGamevaultConfig } from "../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../decorators/inject-playstash-config.decorator.js";
 
 @Injectable()
 export class HttpLoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger(this.constructor.name);
   constructor(
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {

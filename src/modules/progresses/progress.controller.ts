@@ -13,6 +13,7 @@ import {
   ApiBody,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
@@ -35,8 +36,8 @@ import {
   appendPaginateFilterExpression,
   toFindOptionsRelations,
 } from "../../globals.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { IncrementProgressByMinutesDto } from "./models/increment-progress-by-minutes.dto.js";
 import { UpdateProgressDto } from "./models/update-progress.dto.js";
@@ -80,7 +81,7 @@ export class ProgressController {
   })
   @MinimumRole(Role.GUEST)
   async findProgresses(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Paginate() query: PaginateQuery,
   ): Promise<Paginated<Progress>> {
     if (
@@ -123,6 +124,8 @@ export class ProgressController {
 
   /** Get the progress of a specific game for a user. */
   @Get("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "get a specific game progress for a user",
     operationId: "getProgressByUserIdAndGameId",
@@ -131,7 +134,7 @@ export class ProgressController {
   @ApiOkResponse({ type: () => Progress })
   async getProgressByUserIdAndGameId(
     @Param() params: UserIdGameIdDto,
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
   ): Promise<Progress> {
     return this.progressService.findOneByUserIdAndGameIdOrReturnEmptyProgress(
       Number(params.user_id),
@@ -148,6 +151,8 @@ export class ProgressController {
 
   /** Deletes a progress for a user and game. */
   @Delete("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "delete a progress",
     description:
@@ -159,7 +164,7 @@ export class ProgressController {
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   async deleteProgressByUserIdAndGameId(
     @Param() params: UserIdGameIdDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<Progress> {
     return this.progressService.deleteByUserIdAndGameId(
       Number(params.user_id),
@@ -170,6 +175,8 @@ export class ProgressController {
 
   /** Set progress for a user and game. */
   @Put("/user/:user_id/game/:game_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiBody({ type: () => UpdateProgressDto })
   @ApiOperation({
     summary: "create or update a progress",
@@ -180,7 +187,7 @@ export class ProgressController {
   async putProgressByUserIdAndGameId(
     @Param() params: UserIdGameIdDto,
     @Body() progress: UpdateProgressDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<Progress> {
     return this.progressService.set(
       Number(params.user_id),
@@ -195,6 +202,8 @@ export class ProgressController {
    * given user.
    */
   @Put("/user/:user_id/game/:game_id/increment")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "Increment a specific game progress for a user by a minute",
     operationId: "putProgressByUserIdAndGameIdIncrementByOne",
@@ -203,7 +212,7 @@ export class ProgressController {
   @MinimumRole(Role.USER)
   async putProgressByUserIdAndGameIdIncrementByOne(
     @Param() params: UserIdGameIdDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<Progress> {
     return this.progressService.increment(
       Number(params.user_id),
@@ -217,6 +226,9 @@ export class ProgressController {
    * minutes.
    */
   @Put("/user/:user_id/game/:game_id/increment/:minutes")
+  @ApiParam({ name: "user_id", required: true, type: Number })
+  @ApiParam({ name: "game_id", required: true, type: Number })
+  @ApiParam({ name: "minutes", required: true, type: Number })
   @ApiOperation({
     summary: "Increment a specific game progress for a user by x minutes",
     operationId: "putProgressByUserIdAndGameIdIncrementByMinutes",
@@ -225,7 +237,7 @@ export class ProgressController {
   @MinimumRole(Role.USER)
   async putProgressByUserIdAndGameIdIncrementByMinutes(
     @Param() params: IncrementProgressByMinutesDto,
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<Progress> {
     return this.progressService.increment(
       Number(params.user_id),

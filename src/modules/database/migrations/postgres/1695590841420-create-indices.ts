@@ -17,7 +17,7 @@ export class CreateIndices1695590841420 implements MigrationInterface {
             CREATE INDEX IF NOT EXISTS "IDX_d6db1ab4ee9ad9dbe86c64e4cc" ON "image" ("id")
         `);
     await queryRunner.query(`
-            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX IF NOT EXISTS "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
             CREATE INDEX IF NOT EXISTS "IDX_79abdfd87a688f9de756a162b6" ON "progress" ("id")

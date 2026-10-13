@@ -8,20 +8,20 @@ import type { Mocked } from "vitest";
 import configuration from "../../configuration.js";
 import { GamesService } from "../games/games.service.js";
 import { MediaService } from "../media/media.service.js";
-import { GamevaultUser } from "./gamevault-user.entity.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { Role } from "./models/role.enum.js";
 import { UsersService } from "./users.service.js";
 
 describe("UsersService", () => {
   let service: UsersService;
-  let userRepository: Mocked<Repository<GamevaultUser>>;
+  let userRepository: Mocked<Repository<PlaystashUser>>;
   let mediaService: Mocked<MediaService>;
   let gamesService: Mocked<GamesService>;
 
   const createMockUser = (
-    overrides: Partial<GamevaultUser> = {},
-  ): GamevaultUser => {
-    const user = new GamevaultUser();
+    overrides: Partial<PlaystashUser> = {},
+  ): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.password = "hashedpassword";

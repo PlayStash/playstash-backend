@@ -5,13 +5,13 @@ import type { Mock, Mocked } from "vitest";
 import configuration from "../../configuration.js";
 import { OtpService } from "../otp/otp.service.js";
 import { Progress } from "../progresses/progress.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
 import { GamesController } from "./games.controller.js";
 import { GamesService } from "./games.service.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 
 vi.mock("nestjs-paginate", async () => {
   const actual = await vi.importActual("nestjs-paginate");
@@ -33,15 +33,15 @@ describe("GamesController", () => {
   let controller: GamesController;
   let gamesService: Mocked<GamesService>;
   let filesService: Mocked<FilesService>;
-  let gamesRepository: Mocked<Repository<GamevaultGame>>;
+  let gamesRepository: Mocked<Repository<PlaystashGame>>;
   let progressRepository: Mocked<Repository<Progress>>;
   let usersService: Mocked<UsersService>;
   let otpService: Mocked<OtpService>;
 
   const createMockUser = (
-    overrides: Partial<GamevaultUser> = {},
-  ): GamevaultUser => {
-    const user = new GamevaultUser();
+    overrides: Partial<PlaystashUser> = {},
+  ): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.role = Role.USER;
@@ -50,9 +50,9 @@ describe("GamesController", () => {
   };
 
   const createMockGame = (
-    overrides: Partial<GamevaultGame> = {},
-  ): GamevaultGame => {
-    const game = new GamevaultGame();
+    overrides: Partial<PlaystashGame> = {},
+  ): PlaystashGame => {
+    const game = new PlaystashGame();
     game.id = 1;
     game.title = "Test Game";
     game.file_path = "/games/test-game.zip";

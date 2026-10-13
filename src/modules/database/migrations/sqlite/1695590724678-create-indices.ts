@@ -8,7 +8,7 @@ export class CreateIndices1695590724678 implements MigrationInterface {
             DROP INDEX "IDX_e0626148aee5829fd312447001"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_user" (
+            CREATE TABLE "temporary_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -30,7 +30,7 @@ export class CreateIndices1695590724678 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_user"(
+            INSERT INTO "temporary_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -60,14 +60,14 @@ export class CreateIndices1695590724678 implements MigrationInterface {
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "gamevault_user"
+            FROM "playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_user"
+            DROP TABLE "playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_user"
-                RENAME TO "gamevault_user"
+            ALTER TABLE "temporary_playstash_user"
+                RENAME TO "playstash_user"
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_0285d4f1655d080cfcf7d1ab14" ON "genre" ("id")
@@ -79,7 +79,7 @@ export class CreateIndices1695590724678 implements MigrationInterface {
             CREATE INDEX "IDX_d6db1ab4ee9ad9dbe86c64e4cc" ON "image" ("id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_79abdfd87a688f9de756a162b6" ON "progress" ("id")
@@ -169,11 +169,11 @@ export class CreateIndices1695590724678 implements MigrationInterface {
             DROP INDEX "IDX_0285d4f1655d080cfcf7d1ab14"
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_user"
-                RENAME TO "temporary_gamevault_user"
+            ALTER TABLE "playstash_user"
+                RENAME TO "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_user" (
+            CREATE TABLE "playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -195,7 +195,7 @@ export class CreateIndices1695590724678 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_user"(
+            INSERT INTO "playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -225,10 +225,10 @@ export class CreateIndices1695590724678 implements MigrationInterface {
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "temporary_gamevault_user"
+            FROM "temporary_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_user"
+            DROP TABLE "temporary_playstash_user"
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_e0626148aee5829fd312447001" ON "image" ("source")

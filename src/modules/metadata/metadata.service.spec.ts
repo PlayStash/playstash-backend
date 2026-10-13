@@ -29,8 +29,8 @@ vi.mock("../../logging.js", async () => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
-  logGamevaultGame: vi.fn((g) => ({ id: g?.id })),
-  logGamevaultUser: vi.fn(),
+  logPlaystashGame: vi.fn((g) => ({ id: g?.id })),
+  logPlaystashUser: vi.fn(),
   logMedia: vi.fn(),
   logMetadata: vi.fn(),
   logMetadataProvider: vi.fn((p) => ({ slug: p?.slug })),
@@ -262,16 +262,16 @@ describe("MetadataService", () => {
       const result = await service.merge(1);
       expect(mockGameMetadataService.save).toHaveBeenCalled();
       const savedMeta = mockGameMetadataService.save.mock.calls[0][0];
-      expect(savedMeta.provider_slug).toBe("gamevault");
+      expect(savedMeta.provider_slug).toBe("playstash");
       expect(savedMeta.provider_data_id).toBe("1");
       expect(savedMeta.title).toBe("Provider Title");
       expect(result.metadata).toBeDefined();
     });
 
-    it("should ignore corrupt gamevault provider metadata during merge", async () => {
+    it("should ignore corrupt playstash provider metadata during merge", async () => {
       const corruptProviderMeta = {
         id: 99,
-        provider_slug: "gamevault",
+        provider_slug: "playstash",
         provider_data_id: "1",
         title: "Corrupted Title",
         created_at: new Date("2020-01-01"),
@@ -400,7 +400,7 @@ describe("MetadataService", () => {
   });
 
   describe("normalizeRelations (via merge)", () => {
-    it("should set provider_slug to gamevault and provider_data_id to kebab-case name", async () => {
+    it("should set provider_slug to playstash and provider_data_id to kebab-case name", async () => {
       const providerMeta = {
         provider_slug: "test-provider",
         provider_data_id: "123",
@@ -440,7 +440,7 @@ describe("MetadataService", () => {
 
       await service.merge(1);
       const savedMeta = mockGameMetadataService.save.mock.calls[0][0];
-      expect(savedMeta.genres![0].provider_slug).toBe("gamevault");
+      expect(savedMeta.genres![0].provider_slug).toBe("playstash");
       expect(savedMeta.genres![0].provider_data_id).toBe("action-rpg");
       expect(savedMeta.genres![0].id).toBeUndefined();
     });

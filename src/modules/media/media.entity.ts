@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Column, Entity, Index, ManyToOne, type Relation } from "typeorm";
 
 import { DatabaseEntity } from "../database/database.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 
 @Entity()
 export class Media extends DatabaseEntity {
@@ -30,12 +30,12 @@ export class Media extends DatabaseEntity {
   })
   type!: string;
 
-  @ManyToOne(() => GamevaultUser, (user) => user.uploaded_media, {
+  @ManyToOne(() => PlaystashUser, (user) => user.uploaded_media, {
     nullable: true,
   })
   @ApiPropertyOptional({
     description: "the uploader of the media",
-    type: () => GamevaultUser,
+    type: () => PlaystashUser,
   })
-  uploader?: Relation<GamevaultUser>;
+  uploader?: Relation<PlaystashUser>;
 }

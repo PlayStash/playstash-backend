@@ -3,7 +3,7 @@ import { PassportStrategy } from "@nestjs/passport";
 import { BasicStrategy } from "passport-http";
 
 import { compare } from "bcrypt";
-import { GamevaultUser } from "../../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { UsersService } from "../../users/users.service.js";
 
 @Injectable()
@@ -20,7 +20,7 @@ export class BasicAuthenticationStrategy extends PassportStrategy(
 
   /** Validates a username and password. */
   async validate(
-    request: { user: GamevaultUser },
+    request: { user: PlaystashUser },
     username: string,
     password: string,
   ) {

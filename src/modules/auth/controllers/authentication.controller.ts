@@ -17,7 +17,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { SkipGuards } from "../../../decorators/skip-guards.decorator.js";
-import { GamevaultUser } from "../../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { AuthenticationService } from "../authentication.service.js";
 import { RefreshTokenGuard } from "../guards/refresh-token.guard.js";
 import { RefreshTokenDto } from "../models/refresh-token.dto.js";
@@ -28,7 +28,7 @@ import { Session } from "../session.entity.js";
 @ApiTags("auth")
 @ApiBearerAuth()
 @ApiSecurity("apikey")
-export class GamevaultJwtController {
+export class PlaystashJwtController {
   private readonly logger = new Logger(this.constructor.name);
   constructor(private readonly authService: AuthenticationService) {}
 
@@ -45,7 +45,7 @@ export class GamevaultJwtController {
   async postAuthRefresh(
     @Request()
     req: {
-      user: GamevaultUser;
+      user: PlaystashUser;
       ip: string;
       headers: { [key: string]: string };
     },
@@ -86,7 +86,7 @@ export class GamevaultJwtController {
   })
   @ApiOkResponse({ type: () => Session, isArray: true })
   async getAuthSessions(
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<Session[]> {
     return this.authService.getUserSessions(req.user);
   }
@@ -99,7 +99,7 @@ export class GamevaultJwtController {
     operationId: "postAuthRevokeAll",
   })
   async postAuthRevokeAll(
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
   ): Promise<void> {
     return this.authService.revokeAllUserSessions(req.user);
   }

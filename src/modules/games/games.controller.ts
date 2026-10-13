@@ -23,6 +23,7 @@ import {
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
@@ -58,14 +59,14 @@ import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
 import { OtpService } from "../otp/otp.service.js";
 import { State } from "../progresses/models/state.enum.js";
 import { Progress } from "../progresses/progress.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
 import { GamesService } from "./games.service.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
 import { GameIdDto } from "./models/game-id.dto.js";
 import { UpdateGameDto } from "./models/update-game.dto.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 const metadataRelationNameFilters = {
   "metadata.genres.name": "genres.name",
   "metadata.tags.name": "tags.name",
@@ -85,8 +86,8 @@ export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
     private readonly filesService: FilesService,
-    @InjectRepository(GamevaultGame)
-    private readonly gamesRepository: Repository<GamevaultGame>,
+    @InjectRepository(PlaystashGame)
+    private readonly gamesRepository: Repository<PlaystashGame>,
     @InjectRepository(Progress)
     private readonly progressRepository: Repository<Progress>,
     private readonly usersService: UsersService,
@@ -98,7 +99,7 @@ export class GamesController {
     summary: "manually triggers an index of all games",
     operationId: "putFilesReindex",
   })
-  @ApiOkResponse({ type: () => GamevaultGame, isArray: true })
+  @ApiOkResponse({ type: () => PlaystashGame, isArray: true })
   @MinimumRole(Role.ADMIN)
   async putFilesReindex() {
     return this.filesService.indexAllFiles();
@@ -163,16 +164,16 @@ export class GamesController {
   /** Get paginated games list based on the given query parameters. */
   @Get()
   @PaginateQueryOptions()
-  @ApiOkResponsePaginated(GamevaultGame)
+  @ApiOkResponsePaginated(PlaystashGame)
   @ApiOperation({
     summary: "get a list of games",
     operationId: "getGames",
   })
   @MinimumRole(Role.GUEST)
   async findGames(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Paginate() query: PaginateQuery,
-  ): Promise<Paginated<GamevaultGame>> {
+  ): Promise<Paginated<PlaystashGame>> {
     const relationPaths = [
       "bookmarked_users",
       "metadata",
@@ -281,7 +282,7 @@ export class GamesController {
       defaultSortBy: [["sort_title", "ASC"]],
       maxLimit: -1,
       nullSort: "last",
-      relations: toFindOptionsRelations<GamevaultGame>(relationPaths),
+      relations: toFindOptionsRelations<PlaystashGame>(relationPaths),
       sortableColumns: [
         "id",
         "title",
@@ -346,11 +347,11 @@ export class GamesController {
     summary: "get a random game",
     operationId: "getGameRandom",
   })
-  @ApiOkResponse({ type: () => GamevaultGame })
+  @ApiOkResponse({ type: () => PlaystashGame })
   @MinimumRole(Role.GUEST)
   async getGameRandom(
-    @Request() request: { user: GamevaultUser },
-  ): Promise<GamevaultGame> {
+    @Request() request: { user: PlaystashUser },
+  ): Promise<PlaystashGame> {
     return this.gamesService.findRandom({
       loadDeletedEntities: false,
       loadRelations: true,
@@ -362,16 +363,17 @@ export class GamesController {
 
   /** Retrieves details for a game with the specified ID. */
   @Get(":game_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "get details on a game",
     operationId: "getGameByGameId",
   })
-  @ApiOkResponse({ type: () => GamevaultGame })
+  @ApiOkResponse({ type: () => PlaystashGame })
   @MinimumRole(Role.GUEST)
   async getGameByGameId(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Param() params: GameIdDto,
-  ): Promise<GamevaultGame> {
+  ): Promise<PlaystashGame> {
     const game = await this.gamesService.findOneByGameIdOrFail(
       Number(params.game_id),
       {
@@ -390,6 +392,7 @@ export class GamesController {
 
   /** Download a game by its ID. */
   @Get(":game_id/download")
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiHeader({
     name: "X-Download-Speed-Limit",
     required: false,
@@ -428,7 +431,7 @@ export class GamesController {
   @ApiOkResponse({ type: () => StreamableFile })
   @Header("Accept-Ranges", "bytes")
   async getGameDownload(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Param() params: GameIdDto,
     @Res({ passthrough: true }) response: Response,
     @Headers("X-Download-Speed-Limit") speedlimit?: string,
@@ -454,6 +457,7 @@ export class GamesController {
   }
 
   @Put(":game_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "updates the details of a game",
     operationId: "putGameUpdate",
@@ -463,7 +467,7 @@ export class GamesController {
   async putGameUpdate(
     @Param() params: GameIdDto,
     @Body() dto: UpdateGameDto,
-  ): Promise<GamevaultGame> {
+  ): Promise<PlaystashGame> {
     return this.gamesService.update(Number(params.game_id), dto);
   }
 
@@ -705,7 +709,7 @@ export class GamesController {
       .createQueryBuilder("metadata")
       .select("game.id", "id")
       .distinct(true)
-      .innerJoin(GamevaultGame, "game", "game.metadata_id = metadata.id");
+      .innerJoin(PlaystashGame, "game", "game.metadata_id = metadata.id");
 
     addFilter(queryBuilder, metadataQuery, {
       [metadataFilterKey]: true,

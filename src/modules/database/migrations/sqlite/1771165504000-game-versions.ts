@@ -20,7 +20,7 @@ export class GameVersions1771165504000 implements MigrationInterface {
         type varchar NOT NULL DEFAULT 'UNDETECTABLE',
         indexed_at datetime NOT NULL DEFAULT (datetime('now')),
         CONSTRAINT UQ_b0b88b548562b921436bdacea35 UNIQUE (game_id, file_path),
-        CONSTRAINT FK_5a4e407c2898e29b00136632b33 FOREIGN KEY (game_id) REFERENCES gamevault_game(id) ON DELETE CASCADE
+        CONSTRAINT FK_5a4e407c2898e29b00136632b33 FOREIGN KEY (game_id) REFERENCES playstash_game(id) ON DELETE CASCADE
       );
     `);
 
@@ -54,7 +54,7 @@ export class GameVersions1771165504000 implements MigrationInterface {
         g.early_access,
         g.type,
         COALESCE(g.updated_at, g.created_at, datetime('now'))
-      FROM gamevault_game g
+      FROM playstash_game g
       WHERE g.file_path IS NOT NULL;
     `);
   }

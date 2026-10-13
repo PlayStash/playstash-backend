@@ -3,10 +3,10 @@ import { PassportStrategy } from "@nestjs/passport";
 import { type Request } from "express";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import type { AppConfiguration } from "../../../configuration.js";
-import { InjectGamevaultConfig } from "../../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
 import { UsersService } from "../../users/users.service.js";
 import { AuthenticationService } from "../authentication.service.js";
-import { type GamevaultJwtPayload } from "../models/gamevault-jwt-payload.interface.js";
+import { type PlaystashJwtPayload } from "../models/playstash-jwt-payload.interface.js";
 
 @Injectable()
 export class RefreshTokenStrategy extends PassportStrategy(
@@ -18,7 +18,7 @@ export class RefreshTokenStrategy extends PassportStrategy(
   constructor(
     private readonly usersService: UsersService,
     private readonly authService: AuthenticationService,
-    @InjectGamevaultConfig() config: AppConfiguration,
+    @InjectPlaystashConfig() config: AppConfiguration,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -28,7 +28,7 @@ export class RefreshTokenStrategy extends PassportStrategy(
     });
   }
 
-  async validate(request: Request, dto: { payload: GamevaultJwtPayload }) {
+  async validate(request: Request, dto: { payload: PlaystashJwtPayload }) {
     // Check if token is revoked
     const token = (request.headers.authorization ?? "").split(" ")[1];
     const isRevoked = await this.authService.isTokenRevoked(token);

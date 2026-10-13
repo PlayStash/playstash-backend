@@ -8,7 +8,7 @@ import {
 import { Reflector } from "@nestjs/core";
 
 import type { AppConfiguration } from "../../../configuration.js";
-import { InjectGamevaultConfig } from "../../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
 import { MINIMUM_ROLE_KEY } from "../../../decorators/minimum-role.decorator.js";
 import { SKIP_GUARDS_KEY } from "../../../decorators/skip-guards.decorator.js";
 import { Role } from "../../users/models/role.enum.js";
@@ -20,7 +20,7 @@ export class AuthorizationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly usersService: UsersService,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {
     if (this.config.TESTING.AUTHENTICATION_DISABLED) {
       this.logger.warn({

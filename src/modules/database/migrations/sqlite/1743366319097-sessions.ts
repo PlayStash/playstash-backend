@@ -39,13 +39,13 @@ export class Sessions1743366319097 implements MigrationInterface {
         `);
     await queryRunner.query(`
             CREATE TABLE "v12_bookmark" (
-                "v12_gamevault_user_id" integer NOT NULL,
+                "v12_playstash_user_id" integer NOT NULL,
                 "v12_game_id" integer NOT NULL,
-                PRIMARY KEY ("v12_gamevault_user_id", "v12_game_id")
+                PRIMARY KEY ("v12_playstash_user_id", "v12_game_id")
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_gamevault_user_id")
+            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_playstash_user_id")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_dac42c27eb34c76294db5d7d4f" ON "v12_bookmark" ("v12_game_id")
@@ -146,7 +146,7 @@ export class Sessions1743366319097 implements MigrationInterface {
                 "ip_address" varchar NOT NULL,
                 "user_agent" varchar NOT NULL,
                 "user_id" integer,
-                CONSTRAINT "FK_30e98e8746699fb9af235410aff" FOREIGN KEY ("user_id") REFERENCES "gamevault_user" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+                CONSTRAINT "FK_30e98e8746699fb9af235410aff" FOREIGN KEY ("user_id") REFERENCES "playstash_user" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
             )
         `);
     await queryRunner.query(`
@@ -209,16 +209,16 @@ export class Sessions1743366319097 implements MigrationInterface {
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_bookmark" (
-                "v12_gamevault_user_id" integer NOT NULL,
+                "v12_playstash_user_id" integer NOT NULL,
                 "v12_game_id" integer NOT NULL,
-                CONSTRAINT "FK_ba0312a26cea7e0d2e4f3a47b3f" FOREIGN KEY ("v12_gamevault_user_id") REFERENCES "v12_gamevault_user" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+                CONSTRAINT "FK_ba0312a26cea7e0d2e4f3a47b3f" FOREIGN KEY ("v12_playstash_user_id") REFERENCES "v12_playstash_user" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
                 CONSTRAINT "FK_dac42c27eb34c76294db5d7d4f3" FOREIGN KEY ("v12_game_id") REFERENCES "v12_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                PRIMARY KEY ("v12_gamevault_user_id", "v12_game_id")
+                PRIMARY KEY ("v12_playstash_user_id", "v12_game_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_v12_bookmark"("v12_gamevault_user_id", "v12_game_id")
-            SELECT "v12_gamevault_user_id",
+            INSERT INTO "temporary_v12_bookmark"("v12_playstash_user_id", "v12_game_id")
+            SELECT "v12_playstash_user_id",
                 "v12_game_id"
             FROM "v12_bookmark"
         `);
@@ -230,7 +230,7 @@ export class Sessions1743366319097 implements MigrationInterface {
                 RENAME TO "v12_bookmark"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_gamevault_user_id")
+            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_playstash_user_id")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_dac42c27eb34c76294db5d7d4f" ON "v12_bookmark" ("v12_game_id")
@@ -580,14 +580,14 @@ export class Sessions1743366319097 implements MigrationInterface {
         `);
     await queryRunner.query(`
             CREATE TABLE "v12_bookmark" (
-                "v12_gamevault_user_id" integer NOT NULL,
+                "v12_playstash_user_id" integer NOT NULL,
                 "v12_game_id" integer NOT NULL,
-                PRIMARY KEY ("v12_gamevault_user_id", "v12_game_id")
+                PRIMARY KEY ("v12_playstash_user_id", "v12_game_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "v12_bookmark"("v12_gamevault_user_id", "v12_game_id")
-            SELECT "v12_gamevault_user_id",
+            INSERT INTO "v12_bookmark"("v12_playstash_user_id", "v12_game_id")
+            SELECT "v12_playstash_user_id",
                 "v12_game_id"
             FROM "temporary_v12_bookmark"
         `);
@@ -598,7 +598,7 @@ export class Sessions1743366319097 implements MigrationInterface {
             CREATE INDEX "IDX_dac42c27eb34c76294db5d7d4f" ON "v12_bookmark" ("v12_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_gamevault_user_id")
+            CREATE INDEX "IDX_ba0312a26cea7e0d2e4f3a47b3" ON "v12_bookmark" ("v12_playstash_user_id")
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_112e796e2ae5ea3c66e321a9fb"

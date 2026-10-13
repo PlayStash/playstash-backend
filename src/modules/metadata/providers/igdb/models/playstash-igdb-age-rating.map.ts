@@ -6,7 +6,7 @@ type AgeRatingMapEntry = {
   ratingName: string;
 };
 
-export const GameVaultIgdbAgeRatingMap: AgeRatingMapEntry[] = [
+export const PlayStashIgdbAgeRatingMap: AgeRatingMapEntry[] = [
   { system: "PEGI", name: "Three", minAge: 3, ratingName: "Three" },
   { system: "PEGI", name: "Seven", minAge: 7, ratingName: "Seven" },
   { system: "PEGI", name: "Twelve", minAge: 12, ratingName: "Twelve" },

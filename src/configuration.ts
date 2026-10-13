@@ -287,7 +287,7 @@ const configuration = {
     PORT: parseNumber(resolveEnv("DB_PORT"), 5432),
     USERNAME: resolveEnv("DB_USERNAME") || "default",
     PASSWORD: resolveEnv("DB_PASSWORD") || "default",
-    DATABASE: resolveEnv("DB_DATABASE") || "gamevault",
+    DATABASE: resolveEnv("DB_DATABASE") || "playstash",
     DEBUG: parseBooleanEnvVariable(resolveEnv("DB_DEBUG")),
     SYNCHRONIZE: parseBooleanEnvVariable(resolveEnv("DB_SYNCHRONIZE")),
     TLS: {
@@ -451,9 +451,9 @@ const configuration = {
   } as const,
 } as const;
 
-export const CONFIG_NAMESPACE = "gamevault";
+export const CONFIG_NAMESPACE = "playstash";
 
-export const gamevaultConfiguration = registerAs(
+export const playstashConfiguration = registerAs(
   CONFIG_NAMESPACE,
   () => configuration,
 );

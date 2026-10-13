@@ -20,6 +20,7 @@ import {
   ApiConsumes,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiProduces,
   ApiSecurity,
   ApiTags,
@@ -32,8 +33,8 @@ const { createReadStream, stat } = fsExtra;
 import configuration from "../../configuration.js";
 import { DisableApiIf } from "../../decorators/disable-api-if.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Media } from "./media.entity.js";
 import { MediaService } from "./media.service.js";
 
@@ -48,6 +49,7 @@ export class MediaController {
 
   /** Retrieve media by its ID and send it as the response. */
   @Get(":id")
+  @ApiParam({ name: "id", required: true, type: Number })
   @ApiOperation({
     summary: "Retrieve media using its id",
     operationId: "getMediaByMediaId",
@@ -143,7 +145,7 @@ export class MediaController {
   @MinimumRole(Role.USER)
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   postMedia(
-    @Request() req: { user: GamevaultUser },
+    @Request() req: { user: PlaystashUser },
     @UploadedFile(
       new ParseFilePipe({
         validators: [
