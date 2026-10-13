@@ -1,6 +1,7 @@
 import * as fsExtraModule from "fs-extra";
 import { extractFull } from "node-7z";
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import type { Mock } from "vitest";
 import configurationModule from "../../configuration.js";
 import { WebUIService } from "./web-ui.service.js";
@@ -50,9 +51,99 @@ describe("WebUIService", () => {
   beforeEach(() => {
     service = new WebUIService(configurationModule);
     vi.restoreAllMocks();
+    (configurationModule.WEB_UI as any).GITHUB_TOKEN = undefined;
+    (configurationModule.WEB_UI as any).LOCAL_BUNDLE = undefined;
   });
 
   describe("prepareFrontend", () => {
+    it("uses an explicitly configured local bundle without contacting GitHub", async () => {
+      (configurationModule.WEB_UI as any).LOCAL_BUNDLE = "/opt/frontend.zip";
+      const prepare = vi
+        .spyOn(service as any, "prepareLocalBundle")
+        .mockResolvedValue(undefined);
+      const fetchSpy = vi.spyOn(global, "fetch");
+      await service.prepareFrontend();
+      expect(prepare).toHaveBeenCalledWith("/opt/frontend.zip");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("caches local bundles by content and requires the web entry point", async () => {
+      const fs = (fsExtraModule as any).default;
+      vi.spyOn(fs, "stat").mockResolvedValue({ isFile: () => true });
+      vi.spyOn(fs, "createReadStream").mockReturnValue(
+        Readable.from(["test-bundle"]),
+      );
+      const copy = vi.spyOn(fs, "copyFile").mockResolvedValue(undefined);
+      vi.spyOn(service as any, "isCached").mockResolvedValue(false);
+      vi.spyOn(service as any, "cleanCacheExceptZip").mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(service as any, "extractZip").mockResolvedValue(undefined);
+      fs.pathExists.mockResolvedValue(true);
+      const write = vi
+        .spyOn(service as any, "writeVersionFile")
+        .mockResolvedValue(undefined);
+      await (service as any).prepareLocalBundle("/opt/frontend.zip");
+      expect(copy).toHaveBeenCalled();
+      expect(write).toHaveBeenCalledWith(
+        expect.stringMatching(/^local-[a-f0-9]{64}$/),
+      );
+      fs.pathExists.mockResolvedValue(false);
+      vi.spyOn(fs, "createReadStream").mockReturnValue(
+        Readable.from(["invalid-bundle"]),
+      );
+      await expect(
+        (service as any).prepareLocalBundle("/opt/frontend.zip"),
+      ).rejects.toThrow("dist/index.html");
+    });
+
+    it("sends the read token only to the GitHub API and strips it from asset redirects", async () => {
+      (configurationModule.WEB_UI as any).GITHUB_TOKEN = "test-secret";
+      const fetchSpy = vi
+        .spyOn(global, "fetch")
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: new Headers({
+            location: "https://assets.example.com/bundle.zip",
+          }),
+          body: null,
+        } as Response)
+        .mockResolvedValueOnce({ ok: true, body: null } as Response);
+      await expect(
+        (service as any).downloadFile(
+          "https://api.github.com/repos/PlayStash/playstash-frontend/releases/assets/123",
+          "/tmp/test.zip",
+        ),
+      ).rejects.toThrow("Response body is empty");
+      expect(fetchSpy.mock.calls[0][1]?.headers).toMatchObject({
+        Authorization: "Bearer test-secret",
+      });
+      expect(fetchSpy.mock.calls[1][1]?.headers).toBeUndefined();
+    });
+
+    it("resolves private release assets through their authenticated API IDs", async () => {
+      (configurationModule.WEB_UI as any).GITHUB_TOKEN = "test-secret";
+      vi.spyOn(service as any, "isCached").mockResolvedValue(false);
+      const download = vi
+        .spyOn(service as any, "downloadFile")
+        .mockResolvedValue(undefined);
+      vi.spyOn(service as any, "cleanCacheExceptZip").mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(service as any, "extractZip").mockResolvedValue(undefined);
+      vi.spyOn(service as any, "writeVersionFile").mockResolvedValue(undefined);
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          assets: [{ id: 123, name: "playstash-frontend.zip" }],
+        }),
+      } as Response);
+      await (service as any).ensureFrontendCached("v17.2.0");
+      expect(download).toHaveBeenCalledWith(
+        "https://api.github.com/repos/PlayStash/playstash-frontend/releases/assets/123",
+        expect.any(String),
+      );
+    });
     it("should use forced version and skip download when cached", async () => {
       (service as any).compatibleVersion = "";
       vi.spyOn(service as any, "isCached").mockResolvedValue(true);

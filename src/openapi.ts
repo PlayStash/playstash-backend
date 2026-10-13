@@ -1,6 +1,12 @@
 import type { INestApplication } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import configuration from "./configuration.js";
+import { Activity } from "./modules/users/models/activity.dto.js";
+import {
+  ChatHistoryDto,
+  ChatMessageDto,
+  ChatSendDto,
+} from "./modules/users/models/chat.dto.js";
 
 export function createPlaystashApiDocument(app: INestApplication) {
   return SwaggerModule.createDocument(
@@ -55,5 +61,6 @@ export function createPlaystashApiDocument(app: INestApplication) {
         "https://github.com/PlayStash/playstash-backend/blob/HEAD/LICENSE",
       )
       .build(),
+    { extraModels: [Activity, ChatSendDto, ChatHistoryDto, ChatMessageDto] },
   );
 }

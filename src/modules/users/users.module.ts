@@ -5,6 +5,7 @@ import { GamesModule } from "../games/games.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { ActivityGateway } from "./activity.gateway.js";
 import { ApiKeyService } from "./api-key.service.js";
+import { ChatService } from "./chat.service.js";
 import { PlaystashUser } from "./playstash-user.entity.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
@@ -16,7 +17,7 @@ import { UsersService } from "./users.service.js";
     forwardRef(() => GamesModule),
   ],
   controllers: [UsersController],
-  providers: [UsersService, ApiKeyService, ActivityGateway],
+  providers: [UsersService, ApiKeyService, ChatService, ActivityGateway],
   exports: [UsersService, ApiKeyService],
 })
 export class UsersModule {}

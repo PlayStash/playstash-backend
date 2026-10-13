@@ -31,7 +31,7 @@ describe("MediaController", () => {
   };
 
   const makeReq = (headers: Record<string, string> = {}) => ({
-    headers: new Map(Object.entries(headers)),
+    headers,
   });
 
   const makeStream = () => {
@@ -65,10 +65,7 @@ describe("MediaController", () => {
     await controller.getMediaByMediaId("1", makeReq() as any, res);
 
     expect(res.set).toHaveBeenCalledWith("Content-Type", "image/png");
-    expect(res.set).toHaveBeenCalledWith(
-      "Cache-Control",
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.set).toHaveBeenCalledWith("Cache-Control", "private, no-cache");
     expect(res.set).toHaveBeenCalledWith("ETag", `W/"100-1000"`);
     expect(stream.pipe).toHaveBeenCalledWith(res);
   });
@@ -96,6 +93,25 @@ describe("MediaController", () => {
 
     expect(res.status).toHaveBeenCalledWith(304);
     expect(res.end).toHaveBeenCalled();
+  });
+  it("checks authorization before returning a cached image response", async () => {
+    const denied = Object.assign(new Error("Media was not found."), {
+      status: 404,
+    });
+    (mediaService as any).assertMediaAccess = vi.fn().mockRejectedValue(denied);
+    const res = makeRes();
+    await expect(
+      controller.getMediaByMediaId(
+        "1",
+        {
+          user: { id: 2 },
+          headers: { "if-none-match": 'W/"100-1000"' },
+        } as any,
+        res,
+      ),
+    ).rejects.toBe(denied);
+    expect(mediaService.findOneByMediaIdOrFail).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalledWith(304);
   });
 
   it("returns 500 on a stream error before headers are sent", async () => {

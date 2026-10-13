@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -12,9 +14,14 @@ import { randomUUID } from "node:crypto";
 import path, { basename, dirname } from "node:path";
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
+import {
+  discardStreamedUpload,
+  readFileHeader,
+} from "../../uploads/streamed-upload.js";
+import { GamesService } from "../games/games.service.js";
 import { UsersService } from "../users/users.service.js";
-const { createReadStream, ensureDir, readdir, remove, stat, writeFile } =
-  fsExtra;
+import { SavefileDto } from "./models/savefile.dto.js";
+const { createReadStream, ensureDir, move, readdir, remove, stat } = fsExtra;
 
 @Injectable()
 export class SavefileService {
@@ -23,7 +30,126 @@ export class SavefileService {
   constructor(
     private readonly usersService: UsersService,
     @InjectPlaystashConfig() private readonly config: AppConfiguration,
+    @Inject(forwardRef(() => GamesService))
+    private readonly gamesService?: GamesService,
   ) {}
+
+  private async checkGameAccess(
+    gameId: number,
+    executorUsername: string,
+  ): Promise<void> {
+    if (!this.gamesService) return;
+    const requestingUser = await this.usersService.findOneByUsernameOrFail(
+      executorUsername,
+      { loadRelations: false, loadDeletedEntities: false },
+    );
+    await this.gamesService.findOneByGameIdOrFail(gameId, {
+      loadDeletedEntities: false,
+      requestingUser,
+      filterByAge:
+        await this.usersService.findUserAgeByUsername(executorUsername),
+    });
+  }
+
+  /** Lists all save versions for their owner or an administrator, newest first. */
+  public async list(
+    userId: number,
+    gameId: number,
+    executorUsername: string,
+  ): Promise<SavefileDto[]> {
+    await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
+      userId,
+      executorUsername,
+    );
+    await this.checkGameAccess(gameId, executorUsername);
+    let paths: string[];
+    try {
+      paths = await this.findSavefilesByUserIdAndGameIdOrFail(userId, gameId);
+    } catch (error) {
+      if (error instanceof NotFoundException) return [];
+      throw error;
+    }
+    return Promise.all(
+      paths.map(async (filePath) => {
+        const filename = basename(filePath);
+        const info = await stat(filePath);
+        const timestamp = Number.parseInt(filename, 10);
+        const createdAt = new Date(timestamp);
+        const installationId = filename.slice(filename.indexOf("_") + 1, -4);
+        return {
+          filename,
+          size: info.size,
+          created_at: Number.isFinite(createdAt.getTime())
+            ? createdAt
+            : info.mtime,
+          installation_id: isUUID(installationId, 4)
+            ? installationId
+            : undefined,
+        };
+      }),
+    );
+  }
+
+  /** Downloads an explicitly selected save version after the same owner/admin check. */
+  public async downloadVersion(
+    userId: number,
+    gameId: number,
+    filename: string,
+    executorUsername: string,
+  ): Promise<StreamableFile> {
+    const filePath = await this.resolveVersion(
+      userId,
+      gameId,
+      filename,
+      executorUsername,
+    );
+    return new StreamableFile(createReadStream(filePath), {
+      disposition: `attachment; filename="${basename(filePath)}"`,
+      length: (await stat(filePath)).size,
+      type: "application/zip",
+    });
+  }
+
+  public async deleteVersion(
+    userId: number,
+    gameId: number,
+    filename: string,
+    executorUsername: string,
+  ): Promise<void> {
+    const filePath = await this.resolveVersion(
+      userId,
+      gameId,
+      filename,
+      executorUsername,
+    );
+    if (!this.config.TESTING.MOCK_FILES) await remove(filePath);
+  }
+
+  private async resolveVersion(
+    userId: number,
+    gameId: number,
+    filename: string,
+    executorUsername: string,
+  ): Promise<string> {
+    await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
+      userId,
+      executorUsername,
+    );
+    await this.checkGameAccess(gameId, executorUsername);
+    if (!/^\d{10,17}(?:_[0-9a-f-]{36})?\.zip$/i.test(filename)) {
+      throw new BadRequestException("Invalid save archive filename.");
+    }
+    const paths = await this.findSavefilesByUserIdAndGameIdOrFail(
+      userId,
+      gameId,
+    );
+    const filePath = paths.find(
+      (candidate) => basename(candidate) === filename,
+    );
+    if (!filePath)
+      throw new NotFoundException("The requested save version was not found.");
+    return filePath;
+  }
 
   /**
    * Uploads a new save file for a user and game
@@ -42,23 +168,34 @@ export class SavefileService {
     executorUsername: string,
     installationId?: string,
   ) {
-    this.logger.log(`User uploading save file for a game`, {
-      userId,
-      gameId,
-    });
-    await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
-      userId,
-      executorUsername,
-    );
-    if (installationId && !isUUID(installationId, 4)) {
-      throw new BadRequestException("Installation ID must be a valid UUID v4.");
+    try {
+      this.logger.log(`User uploading save file for a game`, {
+        userId,
+        gameId,
+      });
+      await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
+        userId,
+        executorUsername,
+      );
+      await this.checkGameAccess(gameId, executorUsername);
+      if (installationId && !isUUID(installationId, 4)) {
+        throw new BadRequestException(
+          "Installation ID must be a valid UUID v4.",
+        );
+      }
+      // The upload was streamed to disk, so validation reads only the header of
+      // the temporary file instead of the whole file being held in memory.
+      await this.validate(await readFileHeader(file.path));
+      await this.saveToFileSystem(
+        this.generateNewPath(userId, gameId, installationId),
+        file.path,
+      );
+      await this.cleanupOldSaves(userId, gameId, executorUsername);
+    } finally {
+      // On success the temporary file has been moved to its final location; on
+      // failure (permissions, validation, ...) whatever is left is removed.
+      await discardStreamedUpload(file.path, this.logger);
     }
-    await this.validate(file.buffer);
-    await this.saveToFileSystem(
-      this.generateNewPath(userId, gameId, installationId),
-      file.buffer,
-    );
-    await this.cleanupOldSaves(userId, gameId, executorUsername);
   }
 
   /**
@@ -76,6 +213,7 @@ export class SavefileService {
       userId,
       executorUsername,
     );
+    await this.checkGameAccess(gameId, executorUsername);
     const savefiles = await this.findSavefilesByUserIdAndGameIdOrFail(
       userId,
       gameId,
@@ -117,6 +255,7 @@ export class SavefileService {
       userId,
       executorUsername ?? "",
     );
+    await this.checkGameAccess(gameId, executorUsername ?? "");
     if (this.config.TESTING.MOCK_FILES) {
       this.logger.warn({
         message: "Not deleting media from filesystem.",
@@ -197,14 +336,15 @@ export class SavefileService {
   }
 
   /**
-   * Saves a file buffer to the filesystem
+   * Moves an upload that was streamed to disk to its final location.
+   *
    * @param path - Target path to save the file
-   * @param savefileBuffer - Buffer containing the file data
+   * @param tempPath - Temporary file the upload was streamed to
    * @remarks Will not save files if TESTING.MOCK_FILES is true
    */
   private async saveToFileSystem(
     path: string,
-    savefileBuffer: Buffer,
+    tempPath: string,
   ): Promise<void> {
     if (this.config.TESTING.MOCK_FILES) {
       this.logger.warn({
@@ -214,7 +354,7 @@ export class SavefileService {
       return;
     }
     await ensureDir(dirname(path));
-    await writeFile(path, savefileBuffer);
+    await move(tempPath, path, { overwrite: true });
     this.logger.debug({
       message: "Savefile successfully saved to filesystem.",
       path,

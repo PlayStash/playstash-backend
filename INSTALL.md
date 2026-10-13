@@ -6,7 +6,37 @@ To generate the frontend API specification from this backend without starting a 
 
 Run `pnpm check:fresh-schema sqlite` to verify all migrations against an empty, in-memory SQLite database. To check PostgreSQL, set `PLAYSTASH_TEST_DATABASE_URL` to an empty test database and run `pnpm check:fresh-schema postgres`.
 
-## What You Need
+## Web interface and private repositories
+
+The server serves the `playstash-frontend.zip` release bundle. For an offline installation, download that bundle while signed in to GitHub, mount it into the container, and set `WEB_UI_LOCAL_BUNDLE=/path/to/playstash-frontend.zip`. Its ZIP must contain `dist/index.html`; changes to the ZIP are detected by its content hash on server restart. This option takes precedence over GitHub release lookup and works without credentials or a network connection.
+
+Alternatively, private frontend releases require `WEB_UI_GITHUB_TOKEN` or `WEB_UI_GITHUB_TOKEN_FILE`, with a fine-grained token granting **Contents: read** on `PlayStash/playstash-frontend`. The token remains server-side, is redacted from the configuration API, and is omitted from asset-download redirects. Public repositories need no token. `WEB_UI_VERSION=v17.2.0` pins a release. Set `WEB_UI_ENABLED=false` to run only the API.
+
+GitHub installers and private container images require an account with access to their repositories. A private GitHub release feed cannot be used anonymously by the desktop updater; distribute updates through an accessible feed or download installers while authenticated.
+
+## Scheduled download bandwidth
+
+Download limits apply per transfer in KiB/s. A client can request a slower speed but cannot exceed the server limit. `0` means unlimited.
+
+Set `SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE` to a five-field cron expression. Every minute matching it uses `SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE`; other minutes use `SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE` (unlimited by default). If the inside limit is omitted, it inherits `SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS`. Without a schedule, the original limit applies at all times.
+
+```yaml
+environment:
+  SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE: "* 6-18 * * MON-FRI"
+  SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE_TIMEZONE: "Europe/Berlin"
+  SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE: "2048"
+  SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE: "0"
+```
+
+This limits weekday downloads from 06:00 through 18:59 to 2 MiB/s. The optional timezone defaults to the server timezone. Schedule changes take effect during ongoing downloads without restarting the server; changing the environment configuration itself requires a restart. Invalid schedules or timezone names are rejected.
+
+## External library notifications
+
+Set `NOTIFICATIONS_WEBHOOK_URL` to enable optional notifications when a game is added, restored, or a release file changes. Unchanged rescans do not send notifications. `NOTIFICATIONS_WEBHOOK_FORMAT=json` (default) sends an event with the game ID, title, version, and timestamp; use `discord` for a Discord-compatible webhook. `NOTIFICATIONS_WEBHOOK_TOKEN` optionally supplies a Bearer token. Both the webhook URL and token support the `_FILE` secrets mechanism and are redacted from the configuration API.
+
+Notifications are sent asynchronously, with timeouts, a bounded queue, and retries for temporary delivery failures. A notification failure does not fail uploads or library scans. No webhook is configured by default.
+
+## Local development prerequisites
 
 - [Git](https://git-scm.com/)
 - [Node.js LTS](https://nodejs.org/)

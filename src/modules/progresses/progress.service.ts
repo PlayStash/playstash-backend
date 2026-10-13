@@ -21,6 +21,7 @@ const { readFile } = fsExtra;
 import { type FindOptions, toFindOptionsRelations } from "../../globals.js";
 import { logProgress } from "../../logging.js";
 import { GamesService } from "../games/games.service.js";
+import type { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { State } from "./models/state.enum.js";
 import { type UpdateProgressDto } from "./models/update-progress.dto.js";
@@ -129,6 +130,7 @@ export class ProgressService implements OnApplicationBootstrap {
     userId: number,
     gameId: number,
     executorUsername: string,
+    requestingUser?: PlaystashUser,
   ): Promise<Progress> {
     await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
       userId,
@@ -137,7 +139,7 @@ export class ProgressService implements OnApplicationBootstrap {
     const progress = await this.findOneByUserIdAndGameIdOrReturnEmptyProgress(
       userId,
       gameId,
-      { loadDeletedEntities: true, loadRelations: true },
+      { loadDeletedEntities: true, loadRelations: true, requestingUser },
     );
     const softRemoveResult = await this.progressRepository.softRemove(progress);
     this.logger.log({
@@ -152,6 +154,24 @@ export class ProgressService implements OnApplicationBootstrap {
     gameId: number,
     options: FindOptions,
   ): Promise<Progress> {
+    let visibleGame;
+    if (options.requestingUser) {
+      visibleGame = await this.gamesService.findOneByGameIdOrFail(
+        gameId,
+        options,
+      );
+      if (
+        visibleGame.access_restricted &&
+        options.requestingUser.id !== userId
+      ) {
+        const owner = await this.usersService.findOneByUserIdOrFail(userId, {
+          loadRelations: false,
+          loadDeletedEntities: false,
+        });
+        if (!owner.share_restricted_activity)
+          throw new NotFoundException("This progress is private.");
+      }
+    }
     try {
       const findParameters: FindOneOptions<Progress> = {
         where: {
@@ -200,9 +220,13 @@ export class ProgressService implements OnApplicationBootstrap {
         loadDeletedEntities: true,
         loadRelations: false,
       });
-      newProgress.game = await this.gamesService.findOneByGameIdOrFail(gameId, {
-        loadDeletedEntities: true,
-      });
+      newProgress.game =
+        visibleGame ??
+        (await this.gamesService.findOneByGameIdOrFail(gameId, {
+          loadDeletedEntities: true,
+          filterByAge: options.filterByAge,
+          requestingUser: options.requestingUser,
+        }));
       newProgress.minutes_played = 0;
       newProgress.state = State.UNPLAYED;
       return newProgress;
@@ -214,6 +238,7 @@ export class ProgressService implements OnApplicationBootstrap {
     gameId: number,
     updateProgressDto: UpdateProgressDto,
     executorUsername: string,
+    requestingUser?: PlaystashUser,
   ) {
     await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
       userId,
@@ -223,7 +248,7 @@ export class ProgressService implements OnApplicationBootstrap {
     const progress = await this.findOneByUserIdAndGameIdOrReturnEmptyProgress(
       userId,
       gameId,
-      { loadDeletedEntities: true, loadRelations: true },
+      { loadDeletedEntities: true, loadRelations: true, requestingUser },
     );
 
     if (updateProgressDto.state != null) {
@@ -272,6 +297,7 @@ export class ProgressService implements OnApplicationBootstrap {
     gameId: number,
     executorUsername: string,
     incrementBy = 1,
+    requestingUser?: PlaystashUser,
   ): Promise<Progress> {
     await this.usersService.checkIfUsernameMatchesIdOrIsAdminOrThrow(
       userId,
@@ -280,7 +306,7 @@ export class ProgressService implements OnApplicationBootstrap {
     const progress = await this.findOneByUserIdAndGameIdOrReturnEmptyProgress(
       userId,
       gameId,
-      { loadDeletedEntities: true, loadRelations: true },
+      { loadDeletedEntities: true, loadRelations: true, requestingUser },
     );
     if (
       progress.state !== State.INFINITE &&

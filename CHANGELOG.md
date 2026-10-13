@@ -1,17 +1,62 @@
 # PlayStash Backend Changelog
 
-## 17.0.1
+## 17.1.0
 
 ### Breaking Changes & Migration
 
 - The database schema, migration history and default PostgreSQL database name use PlayStash. -> **Initialize a fresh database for this setup.**
 - Stable releases and development builds use the `main` and `dev` branches. -> **Update local branch tracking and external automation to these branch names.**
+- Activity data is sent only after an authenticated `get-activities` WebSocket message. -> **Clients must request activities after connecting.**
+- Invalid or unavailable download byte ranges return HTTP 416 instead of silently downloading the whole file. -> **Send a valid single byte range, or restart the download without the Range header.**
 
 ### Changes
 
+- OAuth2 sign-in returns to the initiating trusted client, including the desktop app, without exposing tokens to arbitrary redirect destinations.
+- Uploads stream to disk instead of being buffered in memory, and incomplete uploads are cleaned up.
+- Newly uploaded games remain visible during filesystem integrity checks.
+- Resumable game downloads return accurate suffix bytes and HTTP 206 range headers; empty files remain downloadable.
+- Game folder downloads work before indexing, archive caches notice changes to empty folders, and extras/addon folder names are recognized regardless of capitalization.
+- Files whose game titles differ only by capitalization merge into the same game.
+- [#350](https://github.com/Phalcode/gamevault-backend/issues/350), [#346](https://github.com/Phalcode/gamevault-backend/issues/346), [#336](https://github.com/Phalcode/gamevault-backend/issues/336) Game metadata supports a per-game archive password, minimum/recommended system requirements and named launch profiles.
+- Library queries can filter every stored game version by its folder prefix.
+- Save owners and administrators can list, download and delete individual save versions; deleting all saves now uses the authenticated user's permissions correctly.
+- [#414](https://github.com/Phalcode/gamevault-backend/issues/414) Download limits support cron schedules and time zones, change during active downloads and cannot be bypassed by a client requesting a higher limit.
+- [#237](https://github.com/Phalcode/gamevault-backend/issues/237) Optional webhook notifications announce newly added, restored and updated games without repeating unchanged library scans.
+- [#356](https://github.com/Phalcode/gamevault-backend/issues/356) An optional Steam Store metadata provider supports title/App ID searches, images and automatic system requirements without a Steam account.
+- [#241](https://github.com/Phalcode/gamevault-backend/issues/241) Unsupported WebP, AVIF and other decodable images are converted to an allowed image format; passive SVGs are rasterized and active SVG content is rejected.
+- [#340](https://github.com/Phalcode/gamevault-backend/issues/340) Administrators can restrict individual games to selected users; hidden games stay out of library queries, downloads, save/progress access and activity data, with private activity sharing disabled by default.
+- [#247](https://github.com/Phalcode/gamevault-backend/issues/247) Clients can report completed download/install/uninstall/play events with retry-safe UUIDs; administrators can inspect per-game totals and user events, with user opt-out, restricted-game privacy and configurable retention.
+- [#280](https://github.com/Phalcode/gamevault-backend/issues/280), [#148](https://github.com/Phalcode/gamevault-backend/issues/148) Game folders can be indexed with an optional PlayStash manifest and downloaded as one archive; installation and launch recipes remain client-controlled.
+- [#149](https://github.com/Phalcode/gamevault-backend/issues/149), [#142](https://github.com/Phalcode/gamevault-backend/issues/142) Games can provide separately downloadable extras and ordered mod/DLC/patch packages with game access checks.
+- [#454](https://github.com/Phalcode/gamevault-app/issues/454) Users can request games, optionally anonymously; administrators manage fulfillment and requesters can acknowledge status updates.
+- [#537](https://github.com/Phalcode/gamevault-app/issues/537) Game pages support one five-star rating and comment per user, with community averages.
+- [#205](https://github.com/Phalcode/gamevault-app/issues/205) Authenticated users can chat in the lobby, game rooms and direct conversations, select busy/invisible status and receive disconnection updates; chat history is transient and respects game access restrictions.
+- Browser and desktop Socket.IO messages authenticate through API keys and retain validated chat/activity payloads; missing or invalid socket keys are rejected.
+- [#451](https://github.com/Phalcode/gamevault-app/issues/451) Administrators can view a bounded, sanitized tail of enabled server file logs without exposing nested configuration or user objects.
+- [#451](https://github.com/Phalcode/gamevault-app/issues/451) Administrators can queue a full metadata refresh that bypasses cache TTL while retaining provider mappings, priorities and user overrides, with concurrent batches rejected.
+- [#24](https://github.com/Phalcode/gamevault-frontend/issues/24) Administrators can persist folder-prefix rules that automatically add tags during indexing and metadata refreshes.
 - Game metadata can define UMU launcher defaults for the game ID, store and Proton path.
 - Added PlayStash branding throughout the server, configuration, API models, metadata identifiers, logs and deployment examples.
 - All PlayStash features are available without a paid subscription.
 - The OpenAPI specification documents required path parameters and can be exported locally for client generation.
 - Workflow jobs run only when the repository Actions variable `PLAYSTASH_RUN_WORKFLOWS` is set to `true`; they are disabled by default.
-- Optional SonarCloud scans and Discord release notices require your own accounts and explicit configuration.
+- Optional SonarCloud scans require your own account and explicit configuration.
+- GitHub builds AMD64/ARM64 server images on `main` and `dev`; versioned releases reserve their commit in a draft before publishing images, reliably find pending drafts on retries, reject failed release lookups and retain published version images unchanged.
+- The web interface can load an offline frontend ZIP or private GitHub releases using a server-only read token.
+- Server containers start correctly from Windows checkouts by preserving Unix line endings in the entry script.
+
+### Thanks
+
+- @Astro1247
+- @OmniNoesis
+- @an0t8
+- @Makhuta
+- @Bovive
+- @binarygeek119
+- @strese
+- @KairuByte
+- @TheDuckMan64
+- @ChaosTherum
+- @PhuriousGeorge
+- @JoaGamo
+- @ozma6464

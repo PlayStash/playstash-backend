@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { validateOrReject } from "class-validator";
 import lodash from "lodash";
@@ -13,10 +14,11 @@ import { setTimeout } from "node:timers/promises";
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import globals from "../../globals.js";
-import { logPlaystashGame, logMetadataProvider } from "../../logging.js";
+import { logMetadataProvider, logPlaystashGame } from "../../logging.js";
 import { GamesService } from "../games/games.service.js";
-import { PlaystashGame } from "../games/playstash-game.entity.js";
 import { GameType } from "../games/models/game-type.enum.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
+import { AutoTagsService } from "./auto-tags.service.js";
 import { GameMetadata } from "./games/game.metadata.entity.js";
 import { GameMetadataService } from "./games/game.metadata.service.js";
 import { type MinimalGameMetadataDto } from "./games/minimal-game.metadata.dto.js";
@@ -30,6 +32,10 @@ export class MetadataService {
   private readonly logger = new Logger(this.constructor.name);
   private readonly metadataJobs = new Map<number, PlaystashGame>();
   private isProcessingQueue = false;
+  private processingGameId?: number;
+  private readonly forcedMetadataJobs = new Set<number>();
+  private recacheActive = false;
+  private recacheLoading = false;
   providers: MetadataProvider[] = [];
 
   constructor(
@@ -38,6 +44,7 @@ export class MetadataService {
     private readonly gamesService: any,
     private readonly gameMetadataService: GameMetadataService,
     @InjectPlaystashConfig() private readonly config: AppConfiguration,
+    @Optional() private readonly autoTags?: AutoTagsService,
   ) {}
 
   /**
@@ -112,7 +119,7 @@ export class MetadataService {
    * Checks the metadata of games and updates them if necessary.
    */
   async addUpdateMetadataJob(game: PlaystashGame): Promise<void> {
-    if (this.metadataJobs.has(game.id)) {
+    if (this.metadataJobs.has(game.id) || this.processingGameId === game.id) {
       this.logger.debug({
         message: "Skipping metadata job as it is already enqueued.",
         game: logPlaystashGame(game),
@@ -122,6 +129,47 @@ export class MetadataService {
 
     this.metadataJobs.set(game.id, game);
     this.processQueue();
+  }
+
+  /** One guarded background batch, preserving provider mappings and user overrides. */
+  async recacheAll(): Promise<{ queued_games: number; processing: boolean }> {
+    if (this.recacheActive)
+      throw new ConflictException("A metadata recache is already running.");
+    this.recacheActive = true;
+    this.recacheLoading = true;
+    try {
+      const games: PlaystashGame[] = await this.gamesService.find({
+        loadDeletedEntities: false,
+        loadRelations: ["versions", "provider_metadata", "user_metadata"],
+      });
+      for (const provider of this.providers.filter(
+        (provider) => provider.enabled,
+      ))
+        provider.clearCache?.();
+      let queued = 0;
+      for (const game of games) {
+        const paths =
+          game.versions?.map((version) => version.file_path).filter(Boolean) ??
+          [];
+        if (
+          (paths.length ? paths : [game.file_path]).some((path) =>
+            path?.includes("(NC)"),
+          )
+        )
+          continue;
+        this.metadataJobs.set(game.id, game);
+        this.forcedMetadataJobs.add(game.id);
+        queued++;
+      }
+      this.recacheLoading = false;
+      if (!queued) this.recacheActive = false;
+      else void this.processQueue();
+      return { queued_games: queued, processing: queued > 0 };
+    } catch (error) {
+      this.recacheLoading = false;
+      this.recacheActive = false;
+      throw error;
+    }
   }
 
   /**
@@ -137,8 +185,17 @@ export class MetadataService {
         continue;
       }
       const [gameId, game] = nextJob;
+      this.metadataJobs.delete(gameId);
+      this.processingGameId = gameId;
+      const force = this.forcedMetadataJobs.delete(gameId);
       try {
-        await this.updateMetadata(game);
+        const currentGame = force
+          ? await this.gamesService.findOneByGameIdOrFail(gameId, {
+              loadDeletedEntities: false,
+              loadRelations: ["versions", "provider_metadata", "user_metadata"],
+            })
+          : game;
+        await this.updateMetadata(currentGame, force);
       } catch (error) {
         this.logger.warn({
           message: "Error updating metadata for game.",
@@ -146,11 +203,13 @@ export class MetadataService {
           error,
         });
       } finally {
-        this.metadataJobs.delete(gameId);
+        this.processingGameId = undefined;
       }
     }
 
     this.isProcessingQueue = false;
+    if (!this.recacheLoading && !this.forcedMetadataJobs.size)
+      this.recacheActive = false;
   }
 
   /**
@@ -162,7 +221,10 @@ export class MetadataService {
    * @param game The game to update the metadata for.
    * @returns The updated game.
    */
-  private async updateMetadata(game: PlaystashGame | undefined): Promise<void> {
+  private async updateMetadata(
+    game: PlaystashGame | undefined,
+    force = false,
+  ): Promise<void> {
     if (!game) {
       this.logger.error({
         message: "Corresponding metadata-job was not found",
@@ -202,6 +264,7 @@ export class MetadataService {
 
         // If the existing provider metadata is already up to date, skip the update.
         if (
+          !force &&
           existingProviderMetadata &&
           (existingProviderMetadata.updated_at ??
             existingProviderMetadata.created_at) >
@@ -230,11 +293,17 @@ export class MetadataService {
 
         // If the existing provider metadata is not up to date, update it.
         if (existingProviderMetadata) {
-          await this.map(
+          const mapping = [
             game.id,
             provider.slug,
             existingProviderMetadata.provider_data_id ?? "",
-          );
+          ] as const;
+          if (existingProviderMetadata.provider_priority != null)
+            await this.map(
+              ...mapping,
+              existingProviderMetadata.provider_priority,
+            );
+          else await this.map(...mapping);
         } else {
           // If the existing provider metadata is not found, find the metadata.
           await this.findMetadata(game, provider);
@@ -249,7 +318,7 @@ export class MetadataService {
         });
       }
     }
-    this.merge(game.id);
+    await this.merge(game.id);
   }
 
   /**
@@ -329,16 +398,22 @@ export class MetadataService {
    * - For provider-only updates, skips if no provider is newer than current merged metadata
    * - Always merges when user_metadata exists (user explicitly requested changes)
    */
-  async merge(gameId: number): Promise<PlaystashGame> {
+  async merge(gameId: number, force = false): Promise<PlaystashGame> {
     const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
       loadDeletedEntities: false,
       loadRelations: ["metadata", "provider_metadata", "user_metadata"],
     });
     const { mergeableProviderMetadata, removedInvalidProviderMetadata } =
       this.getMergeableProviderMetadata(game);
+    const hasFolderRules = (await this.autoTags?.getRules())?.length;
 
     // SAFEGUARD: Nothing to merge
-    if (!mergeableProviderMetadata.length && !game.user_metadata) {
+    if (
+      !force &&
+      !hasFolderRules &&
+      !mergeableProviderMetadata.length &&
+      !game.user_metadata
+    ) {
       if (removedInvalidProviderMetadata) {
         return this.gamesService.save(game);
       }
@@ -353,6 +428,8 @@ export class MetadataService {
     // SAFEGUARD: Skip merge for provider-only updates if nothing changed
     // Note: Always merge when user_metadata exists since user explicitly requested changes
     if (
+      !force &&
+      !hasFolderRules &&
       !game.user_metadata &&
       this.isMetadataFresh(game, mergeableProviderMetadata)
     ) {
@@ -375,6 +452,8 @@ export class MetadataService {
     );
     mergedMetadata = this.applyFileMetadata(mergedMetadata, game);
     mergedMetadata = this.applyUserMetadata(mergedMetadata, game);
+    if (this.autoTags)
+      mergedMetadata = await this.autoTags.decorate(game, mergedMetadata);
     mergedMetadata = this.finalizeMetadata(mergedMetadata, game, gameId);
 
     // Persist and return
@@ -387,6 +466,11 @@ export class MetadataService {
     });
 
     return mergedGame;
+  }
+
+  async applyFolderTags(gameId: number): Promise<void> {
+    if ((await this.autoTags?.getRules())?.length)
+      await this.merge(gameId, true);
   }
 
   /**
@@ -528,10 +612,15 @@ export class MetadataService {
     if (!game.user_metadata) return base;
 
     const userMetadata = structuredClone(game.user_metadata) as GameMetadata;
+    const overrides = this.stripEmptyFields(userMetadata);
+    // Empty launch profiles deliberately disable any provider defaults.
+    if (userMetadata.launch_profiles != null) {
+      overrides.launch_profiles = userMetadata.launch_profiles;
+    }
 
     return {
       ...base,
-      ...this.stripEmptyFields(userMetadata),
+      ...overrides,
     } as GameMetadata;
   }
 

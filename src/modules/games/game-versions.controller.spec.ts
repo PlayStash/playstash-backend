@@ -1,7 +1,7 @@
 import type { Mocked } from "vitest";
 import { OtpService } from "../otp/otp.service.js";
-import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
 import { GameVersionsController } from "./game-versions.controller.js";
@@ -78,6 +78,7 @@ describe("GameVersionsController", () => {
         1024,
         "bytes=0-999",
         undefined,
+        mockUser,
       );
     });
   });

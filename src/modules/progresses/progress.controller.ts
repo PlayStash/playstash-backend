@@ -36,6 +36,7 @@ import {
   appendPaginateFilterExpression,
   toFindOptionsRelations,
 } from "../../globals.js";
+import { restrictedProgressWhere } from "../games/game-access.js";
 import { Role } from "../users/models/role.enum.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
@@ -101,6 +102,7 @@ export class ProgressController {
     }
 
     return paginate(query, this.progressRepository, {
+      where: restrictedProgressWhere(request.user),
       paginationType: PaginationType.TAKE_AND_SKIP,
       defaultLimit: 100,
       maxLimit: -1,
@@ -142,6 +144,7 @@ export class ProgressController {
       {
         loadDeletedEntities: true,
         loadRelations: true,
+        requestingUser: request.user,
         filterByAge: await this.usersService.findUserAgeByUsername(
           request.user.username,
         ),
@@ -170,6 +173,7 @@ export class ProgressController {
       Number(params.user_id),
       Number(params.game_id),
       req.user.username,
+      req.user,
     );
   }
 
@@ -194,6 +198,7 @@ export class ProgressController {
       Number(params.game_id),
       progress,
       req.user.username,
+      req.user,
     );
   }
 
@@ -218,6 +223,8 @@ export class ProgressController {
       Number(params.user_id),
       Number(params.game_id),
       req.user.username,
+      undefined,
+      req.user,
     );
   }
 
@@ -244,6 +251,7 @@ export class ProgressController {
       Number(params.game_id),
       req.user.username,
       Number(params.minutes),
+      req.user,
     );
   }
 }

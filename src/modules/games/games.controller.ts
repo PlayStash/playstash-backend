@@ -5,9 +5,7 @@ import {
   Header,
   Headers,
   Logger,
-  MaxFileSizeValidator,
   Param,
-  ParseFilePipe,
   Post,
   Put,
   Request,
@@ -40,7 +38,6 @@ import {
 import { In, Not, Repository } from "typeorm";
 
 import { FileInterceptor } from "@nestjs/platform-express";
-import bytes from "bytes";
 import {
   parseFilterExpression,
   type FilterExpression,
@@ -55,6 +52,10 @@ import {
   appendPaginateFilterExpression,
   toFindOptionsRelations,
 } from "../../globals.js";
+import {
+  REQUIRED_UPLOAD_FILE_PIPE,
+  UPLOAD_FIELD_NAME,
+} from "../../uploads/streamed-upload.js";
 import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
 import { OtpService } from "../otp/otp.service.js";
 import { State } from "../progresses/models/state.enum.js";
@@ -63,6 +64,8 @@ import { Role } from "../users/models/role.enum.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
+import { gameAccessWhere, redactRestrictedProgress } from "./game-access.js";
+import { gameUploadMulterOptions } from "./game-upload.multer.js";
 import { GamesService } from "./games.service.js";
 import { GameIdDto } from "./models/game-id.dto.js";
 import { UpdateGameDto } from "./models/update-game.dto.js";
@@ -134,28 +137,15 @@ export class GamesController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor(UPLOAD_FIELD_NAME, gameUploadMulterOptions))
   @MinimumRole(Role.ADMIN)
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   async postGameUpload(
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({
-            maxSize:
-              configuration.GAMES.MAX_UPLOAD_SIZE ??
-              bytes("100gb") ??
-              Number.MAX_SAFE_INTEGER,
-            message: `File exceeds maximum allowed upload size of ${bytes(
-              configuration.GAMES.MAX_UPLOAD_SIZE ??
-                bytes("100gb") ??
-                Number.MAX_SAFE_INTEGER,
-              { unit: "GB", thousandsSeparator: "." },
-            )}.`,
-          }),
-        ],
-      }),
-    )
+    // The interceptor above streams the upload straight to a temporary file on
+    // disk (see gameUploadMulterOptions), so the whole game is never held in
+    // memory. The maximum upload size is enforced there via multer's
+    // `limits.fileSize`, which aborts the request before the file is complete.
+    @UploadedFile(REQUIRED_UPLOAD_FILE_PIPE)
     file: Express.Multer.File,
   ) {
     return this.filesService.upload(file);
@@ -197,6 +187,13 @@ export class GamesController {
       relationPaths.push("metadata.publishers");
     }
 
+    if (
+      query.filter?.["versions.file_path"] ||
+      query.filterExpression?.includes("versions.file_path")
+    ) {
+      relationPaths.push("versions");
+    }
+
     query = this.redirectLegacyQueries(query);
 
     const progressStateFilter = query.filter?.["progresses.state"];
@@ -216,6 +213,29 @@ export class GamesController {
     // Instead, we pre-query the game IDs where this user has a non-UNPLAYED
     // progress and exclude them via PaginateConfig.where.
     let unplayedWhereCondition = undefined;
+    let protectOtherUserProgress = false;
+    // A progress query without an owner addresses the requesting user's state.
+    // Arbitrary cross-user expressions remain available for public games only.
+    if (query.filterExpression?.includes("progresses."))
+      protectOtherUserProgress = true;
+    if (progressStateFilter || progressUserFilter) {
+      if (!progressUserFilter) {
+        query.filter ??= {};
+        query.filter["progresses.user.id"] = `$eq:${request.user.id}`;
+      } else {
+        const target =
+          typeof progressUserFilter === "string" &&
+          /^(?:\$eq:)?([1-9]\d*)$/.exec(progressUserFilter);
+        if (!target) protectOtherUserProgress = true;
+        else if (Number(target[1]) !== request.user.id) {
+          const owner = await this.usersService.findOneByUserIdOrFail(
+            Number(target[1]),
+            { loadRelations: false, loadDeletedEntities: false },
+          );
+          protectOtherUserProgress = !owner.share_restricted_activity;
+        }
+      }
+    }
 
     if (progressStateFilter || progressUserFilter) {
       if (progressStateFilter?.includes("UNPLAYED")) {
@@ -259,6 +279,16 @@ export class GamesController {
 
     await this.rewriteMetadataRelationNameFilterExpression(query);
 
+    // Filtering must not reveal another user's private progress through counts
+    // or the presence/absence of a restricted game, even when response rows are redacted.
+    if (
+      query.filter?.["progresses.state"] ||
+      query.filter?.["progresses.user.id"] ||
+      query.filterExpression?.includes("progresses.")
+    ) {
+      relationPaths.push("progresses", "progresses.user");
+    }
+
     if (
       configuration.PARENTAL.AGE_RESTRICTION_ENABLED &&
       request.user.role !== Role.ADMIN
@@ -275,9 +305,17 @@ export class GamesController {
       }
     }
 
-    return paginate(query, this.gamesRepository, {
+    const accessWhere = gameAccessWhere(request.user, {
+      ...unplayedWhereCondition,
+      ...(protectOtherUserProgress ? { access_restricted: false } : {}),
+    });
+    const result = await paginate(query, this.gamesRepository, {
       paginationType: PaginationType.TAKE_AND_SKIP,
-      where: unplayedWhereCondition,
+      // nestjs-paginate turns an empty object into invalid SQL AND ().
+      where:
+        Array.isArray(accessWhere) || Object.keys(accessWhere).length
+          ? accessWhere
+          : undefined,
       defaultLimit: 100,
       defaultSortBy: [["sort_title", "ASC"]],
       maxLimit: -1,
@@ -311,6 +349,7 @@ export class GamesController {
         id: true,
         title: true,
         file_path: true,
+        "versions.file_path": true,
         created_at: true,
         updated_at: true,
         size: true,
@@ -318,6 +357,7 @@ export class GamesController {
         average_playtime: true,
         type: true,
         download_count: true,
+        access_restricted: [FilterOperator.EQ],
         "bookmarked_users.id": true,
         "metadata.genres.name": true,
         "metadata.tags.name": true,
@@ -339,6 +379,11 @@ export class GamesController {
       },
       withDeleted: false,
     });
+    if (result?.data)
+      result.data = result.data.map((game) =>
+        redactRestrictedProgress(game, request.user),
+      );
+    return result;
   }
 
   /** Retrieves a random game */
@@ -353,6 +398,7 @@ export class GamesController {
     @Request() request: { user: PlaystashUser },
   ): Promise<PlaystashGame> {
     return this.gamesService.findRandom({
+      requestingUser: request.user,
       loadDeletedEntities: false,
       loadRelations: true,
       filterByAge: await this.usersService.findUserAgeByUsername(
@@ -378,6 +424,7 @@ export class GamesController {
       Number(params.game_id),
       {
         loadDeletedEntities: true,
+        requestingUser: request.user,
         filterByAge: await this.usersService.findUserAgeByUsername(
           request.user.username,
         ),
@@ -404,7 +451,7 @@ export class GamesController {
     name: "Range",
     required: false,
     description:
-      "This header lets you control the range of bytes to download. If the header is not present or not valid the entire file will be downloaded.",
+      "A valid single byte range returns HTTP 206; an invalid or unavailable range returns HTTP 416. Without this header the entire file is downloaded.",
     examples: {
       "bytes=0-1023": {
         description: "Download the first 1024 bytes",
@@ -453,6 +500,7 @@ export class GamesController {
       Number(speedlimit),
       range,
       await this.usersService.findUserAgeByUsername(request.user.username),
+      request.user,
     );
   }
 
@@ -467,8 +515,11 @@ export class GamesController {
   async putGameUpdate(
     @Param() params: GameIdDto,
     @Body() dto: UpdateGameDto,
+    @Request() request?: { user: PlaystashUser },
   ): Promise<PlaystashGame> {
-    return this.gamesService.update(Number(params.game_id), dto);
+    return request
+      ? this.gamesService.update(Number(params.game_id), dto, request.user)
+      : this.gamesService.update(Number(params.game_id), dto);
   }
 
   private redirectLegacyQueries(query: PaginateQuery) {

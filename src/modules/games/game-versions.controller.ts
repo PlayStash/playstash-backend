@@ -77,7 +77,7 @@ export class GameVersionsController {
     name: "Range",
     required: false,
     description:
-      "This header lets you control the range of bytes to download. If the header is not present or not valid the entire file will be downloaded.",
+      "A valid single byte range returns HTTP 206; an invalid or unavailable range returns HTTP 416. Without this header the entire file is downloaded.",
   })
   @ApiOperation({
     summary: "download a specific game version",
@@ -113,6 +113,7 @@ export class GameVersionsController {
       Number(speedlimit),
       range,
       await this.usersService.findUserAgeByUsername(request.user.username),
+      request.user,
     );
   }
 }

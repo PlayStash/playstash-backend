@@ -3,6 +3,7 @@
 /dist
 /node_modules
 .local/*/*
+.local/*.json
 !.gitkeep
 
 # Logs

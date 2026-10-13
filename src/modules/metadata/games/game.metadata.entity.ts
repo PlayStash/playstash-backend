@@ -17,6 +17,7 @@ import { DatabaseEntity } from "../../database/database.entity.js";
 import { Media } from "../../media/media.entity.js";
 import { DeveloperMetadata } from "../developers/developer.metadata.entity.js";
 import { GenreMetadata } from "../genres/genre.metadata.entity.js";
+import { LaunchProfileDto } from "../models/launch-profile.dto.js";
 import { Metadata } from "../models/metadata.interface.js";
 import { PublisherMetadata } from "../publishers/publisher.metadata.entity.js";
 import { TagMetadata } from "../tags/tag.metadata.entity.js";
@@ -200,6 +201,35 @@ export class GameMetadata extends DatabaseEntity implements Metadata {
     example: "ShooterGame.exe",
   })
   launch_executable?: string;
+
+  @Column({ type: "simple-json", nullable: true })
+  @ApiPropertyOptional({
+    description:
+      "Named launch defaults shared with clients. An empty array clears the defaults.",
+    type: () => LaunchProfileDto,
+    isArray: true,
+  })
+  launch_profiles?: LaunchProfileDto[];
+
+  @Column({ type: "text", nullable: true })
+  @ApiPropertyOptional({
+    description:
+      "Default archive extraction password for this game. Empty means no password.",
+    example: "archive-password",
+  })
+  archive_password?: string;
+
+  @Column({ type: "text", nullable: true })
+  @ApiPropertyOptional({
+    description: "Minimum system requirements. Markdown supported.",
+  })
+  system_requirements_minimum?: string;
+
+  @Column({ type: "text", nullable: true })
+  @ApiPropertyOptional({
+    description: "Recommended system requirements. Markdown supported.",
+  })
+  system_requirements_recommended?: string;
 
   @Column({ nullable: true })
   @ApiPropertyOptional({

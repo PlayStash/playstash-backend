@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import fs from "fs-extra";
 import node7z from "node-7z";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import * as streamWeb from "node:stream/web";
 import * as semver from "semver";
 import type { AppConfiguration } from "../../configuration.js";
@@ -48,6 +50,10 @@ export class WebUIService {
     await fs.ensureDir(this.cachePath);
 
     try {
+      if (this.config.WEB_UI.LOCAL_BUNDLE) {
+        await this.prepareLocalBundle(this.config.WEB_UI.LOCAL_BUNDLE);
+        return;
+      }
       this.compatibleVersion =
         forcedVersion ||
         this.getCompatibleOrFallbackRelease(
@@ -81,6 +87,38 @@ export class WebUIService {
     }
   }
 
+  private githubHeaders(accept = "application/vnd.github+json") {
+    const headers: Record<string, string> = {
+      "User-Agent": "PlayStash-Backend",
+      Accept: accept,
+    };
+    if (this.config.WEB_UI.GITHUB_TOKEN) {
+      headers.Authorization = `Bearer ${this.config.WEB_UI.GITHUB_TOKEN}`;
+    }
+    return headers;
+  }
+
+  private async prepareLocalBundle(source: string): Promise<void> {
+    const info = await fs.stat(source);
+    if (!info.isFile())
+      throw new Error("WEB_UI_LOCAL_BUNDLE must be a ZIP file.");
+    const hash = createHash("sha256");
+    for await (const chunk of fs.createReadStream(source)) hash.update(chunk);
+    const version = `local-${hash.digest("hex")}`;
+    this.compatibleVersion = version;
+    if (await this.isCached(version)) return;
+    const zipPath = join(this.cachePath, "playstash-frontend.zip");
+    await fs.copyFile(source, zipPath);
+    await this.cleanCacheExceptZip();
+    await this.extractZip(zipPath);
+    if (!(await fs.pathExists(join(this.cachePath, "dist", "index.html")))) {
+      throw new Error("Frontend ZIP must contain dist/index.html.");
+    }
+    await fs.remove(zipPath);
+    await this.writeVersionFile(version);
+    this.logger.log("Local frontend bundle is ready.");
+  }
+
   /**
    * Fetches all releases from GitHub, including 'unstable' or any non-semver releases,
    * then returns a sorted list with semver-valid releases first followed by non-semver releases.
@@ -88,7 +126,8 @@ export class WebUIService {
   private async fetchReleases(): Promise<GitHubRelease[]> {
     const defaultReleases = [{ tag_name: "unstable" }];
     const response = await fetch(this.githubApiUrl, {
-      headers: { "User-Agent": "PlayStash-Backend" },
+      headers: this.githubHeaders(),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) {
       this.logger.error({
@@ -243,7 +282,31 @@ export class WebUIService {
       message: "Downloading frontend zip",
       downloadUrl,
     });
-    await this.downloadFile(downloadUrl, zipPath);
+    if (this.config.WEB_UI.GITHUB_TOKEN) {
+      const response = await fetch(
+        `${this.githubApiUrl}/tags/${encodeURIComponent(version)}`,
+        { headers: this.githubHeaders(), signal: AbortSignal.timeout(15_000) },
+      );
+      if (!response.ok)
+        throw new Error(`GitHub release lookup failed: ${response.status}`);
+      const release = (await response.json()) as {
+        assets?: { id: number; name: string }[];
+      };
+      const asset = release.assets?.find(
+        (item) => item.name === "playstash-frontend.zip",
+      );
+      if (!asset || !Number.isSafeInteger(asset.id) || asset.id <= 0) {
+        throw new Error(
+          "Frontend ZIP is missing from the selected GitHub release.",
+        );
+      }
+      await this.downloadFile(
+        `https://api.github.com/repos/PlayStash/playstash-frontend/releases/assets/${asset.id}`,
+        zipPath,
+      );
+    } else {
+      await this.downloadFile(downloadUrl, zipPath);
+    }
 
     await this.cleanCacheExceptZip();
 
@@ -333,19 +396,42 @@ export class WebUIService {
    * Downloads a file from a URL and saves it locally.
    */
   private async downloadFile(url: string, dest: string): Promise<void> {
-    const res = await fetch(url);
+    const authenticated = new URL(url).origin === "https://api.github.com";
+    let res = await fetch(url, {
+      headers: authenticated
+        ? this.githubHeaders("application/octet-stream")
+        : undefined,
+      redirect: "manual",
+      signal: AbortSignal.timeout(120_000),
+    });
+    // Signed asset URLs must never receive the repository read token.
+    for (
+      let redirects = 0;
+      [301, 302, 303, 307, 308].includes(res.status);
+      redirects++
+    ) {
+      if (redirects >= 5)
+        throw new Error("Too many frontend download redirects.");
+      const location = res.headers.get("location");
+      if (!location)
+        throw new Error("Frontend redirect is missing its location.");
+      const next = new URL(location, url);
+      if (next.protocol !== "https:")
+        throw new Error("Frontend download requires HTTPS.");
+      url = next.toString();
+      await res.body?.cancel();
+      res = await fetch(url, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(120_000),
+      });
+    }
     if (!res.ok) throw new Error(`Failed to download file: ${res.statusText}`);
     if (!res.body) throw new Error("Response body is empty");
 
     const nodeStream = Readable.fromWeb(
       res.body as streamWeb.ReadableStream<Uint8Array>,
     );
-    await new Promise<void>((resolve, reject) => {
-      const fileStream = fs.createWriteStream(dest);
-      nodeStream.pipe(fileStream);
-      fileStream.on("finish", resolve);
-      fileStream.on("error", reject);
-    });
+    await pipeline(nodeStream, fs.createWriteStream(dest));
 
     this.logger.debug({ message: "Downloaded file saved", dest });
   }

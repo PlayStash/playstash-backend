@@ -22,6 +22,7 @@ describe("DeveloperController", () => {
 
   beforeEach(() => {
     queryBuilder = {
+      andWhere: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       groupBy: vi.fn().mockReturnThis(),
@@ -37,6 +38,16 @@ describe("DeveloperController", () => {
     (paginate as Mock).mockReset();
   });
 
+  it("scopes facets to games visible to the requesting user", async () => {
+    (paginate as Mock).mockResolvedValue({ data: [], meta: {}, links: {} });
+    await controller.getDevelopers({} as PaginateQuery, {
+      user: { id: 7, role: 1 } as any,
+    });
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining("game_access"),
+      { accessPublic: false, accessUserId: 7 },
+    );
+  });
   it("should only query developers linked to non-deleted games", async () => {
     (paginate as Mock).mockResolvedValue({
       data: [],

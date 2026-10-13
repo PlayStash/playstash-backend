@@ -180,4 +180,44 @@ describe("Configuration", () => {
       expect(config.SERVER.PORT).toBe(8089);
     });
   });
+
+  describe("scheduled download configuration", () => {
+    beforeEach(() => {
+      vi.resetModules();
+      for (const name of [
+        "SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS",
+        "SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE",
+        "SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE_TIMEZONE",
+        "SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE",
+        "SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE",
+      ])
+        vi.stubEnv(name, "");
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+    it("converts configured KiB/s exactly once and preserves explicit zero", async () => {
+      vi.stubEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS", "2048");
+      vi.stubEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE", "0.0");
+      vi.stubEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE", "1024");
+      const { default: config } = await import("./configuration.js");
+      expect(config.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS).toBe(2097152);
+      expect(config.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE).toBe(0);
+      expect(config.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE).toBe(
+        1048576,
+      );
+    });
+    it("leaves the inside limit unset for fallback and the outside limit unlimited", async () => {
+      const { default: config } = await import("./configuration.js");
+      expect(
+        config.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE,
+      ).toBeUndefined();
+      expect(config.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE).toBe(0);
+    });
+    it("rejects invalid schedules when loading server configuration", async () => {
+      vi.stubEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE", "* 25 * * *");
+      await expect(import("./configuration.js")).rejects.toThrow();
+    });
+  });
 });

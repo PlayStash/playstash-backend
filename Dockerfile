@@ -78,6 +78,7 @@ COPY --chown=node:node  entrypoint.sh /usr/local/bin/
 
 RUN chown -R node:node /app/dist /config /files /media /logs /db /plugins /savefiles \
     && chmod -R 777 /app/dist /config /files /media /logs /db /plugins /savefiles \
+    && sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
     && chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose the server ports (HTTP and HTTPS)

@@ -1,6 +1,8 @@
-import { Optional } from "@nestjs/common";
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -11,12 +13,15 @@ import {
   IsString,
   IsUrl,
   Max,
+  MaxLength,
   Min,
   NotContains,
+  ValidateNested,
 } from "class-validator";
 
 import { MediaValidator } from "../../../validators/media.validator.js";
 import { Media } from "../../media/media.entity.js";
+import { LaunchProfileDto } from "./launch-profile.dto.js";
 
 export class UpdateGameUserMetadataDto {
   @ApiPropertyOptional({
@@ -84,12 +89,12 @@ export class UpdateGameUserMetadataDto {
   })
   @IsInt()
   @Min(0)
-  @Optional()
+  @IsOptional()
   @IsNotEmpty()
   average_playtime?: number;
 
   @MediaValidator("image")
-  @Optional()
+  @IsOptional()
   @IsNotEmpty()
   @ApiPropertyOptional({
     description: "cover/boxart image of the game",
@@ -98,7 +103,7 @@ export class UpdateGameUserMetadataDto {
   cover?: Media;
 
   @MediaValidator("image")
-  @Optional()
+  @IsOptional()
   @IsNotEmpty()
   @ApiPropertyOptional({
     description: "background image of the game",
@@ -143,6 +148,50 @@ export class UpdateGameUserMetadataDto {
     example: "ShooterGame.exe",
   })
   launch_executable?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique((profile: LaunchProfileDto) =>
+    typeof profile?.name === "string"
+      ? profile.name.trim().toLowerCase()
+      : profile?.name,
+  )
+  @ValidateNested({ each: true })
+  @Type(() => LaunchProfileDto)
+  @ApiPropertyOptional({
+    description:
+      "Named launch defaults shared with clients. An empty array clears the defaults.",
+    type: () => LaunchProfileDto,
+    isArray: true,
+    maxItems: 20,
+  })
+  launch_profiles?: LaunchProfileDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  @ApiPropertyOptional({
+    description:
+      "Default archive extraction password for this game. Empty means no password.",
+  })
+  archive_password?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  @ApiPropertyOptional({
+    description: "Minimum system requirements. Markdown supported.",
+  })
+  system_requirements_minimum?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  @ApiPropertyOptional({
+    description: "Recommended system requirements. Markdown supported.",
+  })
+  system_requirements_recommended?: string;
 
   @IsOptional()
   @IsNotEmpty()

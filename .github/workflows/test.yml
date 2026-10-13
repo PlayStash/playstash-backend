@@ -31,7 +31,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run tests with coverage
-        run: pnpm test:cov
+        run: pnpm test:cov --maxWorkers=2
+
+      - name: Typecheck and lint
+        run: |
+          pnpm typecheck
+          pnpm lint
+
+      - name: Verify fresh SQLite schema
+        run: pnpm check:fresh-schema sqlite
+
+      - name: Verify compiled Socket.IO DTOs and validation
+        run: node scripts/check-chat-runtime.mjs
 
       - name: Upload coverage report
         if: always()
@@ -80,4 +91,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Postgres migrations
-        run: pnpm migration:run:postgres
+        env:
+          PLAYSTASH_TEST_DATABASE_URL: postgresql://playstash:playstash@127.0.0.1:5432/playstash
+        run: pnpm check:fresh-schema postgres

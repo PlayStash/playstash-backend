@@ -1,5 +1,6 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpCode, Param, Post, Query } from "@nestjs/common";
 import {
+  ApiAcceptedResponse,
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
@@ -22,6 +23,27 @@ import { ProviderSlugDto } from "./providers/models/provider-slug.dto.js";
 @ApiSecurity("apikey")
 export class MetadataController {
   constructor(private readonly metadataService: MetadataService) {}
+
+  @Post("recache")
+  @HttpCode(202)
+  @MinimumRole(Role.ADMIN)
+  @ApiOperation({
+    summary: "Queue a complete metadata refresh, bypassing provider cache TTL",
+    operationId: "postMetadataRecache",
+  })
+  @ApiAcceptedResponse({
+    schema: {
+      type: "object",
+      properties: {
+        queued_games: { type: "integer" },
+        processing: { type: "boolean" },
+      },
+      required: ["queued_games", "processing"],
+    },
+  })
+  recacheAll() {
+    return this.metadataService.recacheAll();
+  }
 
   @Get("/providers")
   @ApiOperation({

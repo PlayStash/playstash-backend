@@ -6,10 +6,12 @@ import {
 import { SchedulerRegistry } from "@nestjs/schedule";
 import * as fsExtraModule from "fs-extra";
 import { constants } from "fs-extra";
+import { Readable } from "node:stream";
 import { join } from "path";
 import type { Mock, Mocked } from "vitest";
 import configurationModule from "../../configuration.js";
 import { MetadataService } from "../metadata/metadata.service.js";
+import * as packageManifest from "../packages/package-manifest.js";
 import { FilesService } from "./files.service.js";
 import { GamesService } from "./games.service.js";
 import { GameExistence } from "./models/game-existence.enum.js";
@@ -57,10 +59,11 @@ vi.mock("fs-extra", async (importOriginal) => {
     access: vi.fn(),
     constants: { W_OK: 2 },
     createReadStream: vi.fn(),
+    move: vi.fn(),
     pathExists: vi.fn(),
+    remove: vi.fn(),
     rm: vi.fn(),
     stat: vi.fn(),
-    writeFile: vi.fn(),
   };
   return {
     ...actual,
@@ -93,15 +96,18 @@ describe("FilesService", () => {
   };
   let fsExtra: {
     access: Mock;
+    createReadStream: Mock;
     pathExists: Mock;
+    remove: Mock;
     rm: Mock;
     stat: Mock;
-    writeFile: Mock;
+    move: Mock;
   };
 
   beforeEach(() => {
     fsExtra = fsExtraModule as any;
     configuration = configurationModule as any;
+    configuration.TESTING.MOCK_FILES = true;
     configuration.GAMES.SEARCH_EXCLUDE_FILE_REGEX = undefined;
     configuration.GAMES.SEARCH_EXCLUDE_DIR_REGEX = undefined;
 
@@ -143,78 +149,87 @@ describe("FilesService", () => {
 
     fsExtra.access.mockResolvedValue(undefined);
     fsExtra.pathExists.mockResolvedValue(false);
+    fsExtra.remove.mockResolvedValue(undefined);
     fsExtra.rm.mockResolvedValue(undefined);
     fsExtra.stat.mockResolvedValue({ size: 1000 });
-    fsExtra.writeFile.mockResolvedValue(undefined);
+    fsExtra.move.mockResolvedValue(undefined);
 
     vi.spyOn(service as any, "index").mockResolvedValue(undefined);
   });
 
   describe("upload", () => {
+    const tempPath = "/tmp/test-files/.playstash-upload-temp";
+
+    const createUploadFile = (
+      originalname: string,
+      overrides: Partial<Express.Multer.File> = {},
+    ) =>
+      ({
+        originalname,
+        path: tempPath,
+        size: 4,
+        ...overrides,
+      }) as unknown as Express.Multer.File;
+
     it("should reject invalid sanitized filename", async () => {
-      await expect(
-        service.upload({
-          originalname: "///",
-          buffer: Buffer.from("test"),
-          size: 4,
-        } as any),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.upload(createUploadFile("///"))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(fsExtra.remove).toHaveBeenCalledWith(tempPath);
     });
 
     it("should reject unsupported file formats", async () => {
       await expect(
-        service.upload({
-          originalname: "game.txt",
-          buffer: Buffer.from("test"),
-          size: 4,
-        } as any),
+        service.upload(createUploadFile("game.txt")),
       ).rejects.toThrow(BadRequestException);
+      expect(fsExtra.remove).toHaveBeenCalledWith(tempPath);
     });
 
     it("should reject upload when files volume is not writable", async () => {
       fsExtra.access.mockRejectedValueOnce(new Error("permission denied"));
 
       await expect(
-        service.upload({
-          originalname: "game.zip",
-          buffer: Buffer.from("test"),
-          size: 4,
-        } as any),
+        service.upload(createUploadFile("game.zip")),
       ).rejects.toThrow(BadRequestException);
+      expect(fsExtra.remove).toHaveBeenCalledWith(tempPath);
     });
 
     it("should reject upload when target file already exists", async () => {
       fsExtra.pathExists.mockResolvedValueOnce(true);
 
       await expect(
-        service.upload({
-          originalname: "game.zip",
-          buffer: Buffer.from("test"),
-          size: 4,
-        } as any),
+        service.upload(createUploadFile("game.zip")),
       ).rejects.toThrow(BadRequestException);
+      expect(fsExtra.remove).toHaveBeenCalledWith(tempPath);
     });
 
-    it("should persist uploaded file and trigger indexing", async () => {
-      const result = await service.upload({
-        originalname: "My Game.zip",
-        buffer: Buffer.from("payload"),
-        size: 7,
-      } as any);
+    it("should move the streamed upload to its final location and trigger indexing", async () => {
+      const result = await service.upload(createUploadFile("My Game.zip"));
 
       expect(fsExtra.access).toHaveBeenCalledWith(
         "/tmp/test-files",
         constants.W_OK,
       );
-      expect(fsExtra.writeFile).toHaveBeenCalledWith(
+      expect(fsExtra.move).toHaveBeenCalledWith(
+        tempPath,
         join("/tmp/test-files", "My Game.zip"),
-        expect.any(Buffer),
+        { overwrite: false },
       );
+      expect(fsExtra.remove).not.toHaveBeenCalled();
       expect((service as any).index).toHaveBeenCalledWith(
         join("/tmp/test-files", "My Game.zip"),
         expect.any(Object),
       );
       expect(result).toEqual({ path: join("/tmp/test-files", "My Game.zip") });
+    });
+
+    it("should discard the temporary file when moving fails", async () => {
+      fsExtra.move.mockRejectedValueOnce(new Error("disk full"));
+
+      await expect(
+        service.upload(createUploadFile("game.zip")),
+      ).rejects.toThrow(BadRequestException);
+      expect(fsExtra.remove).toHaveBeenCalledWith(tempPath);
     });
   });
 
@@ -365,6 +380,149 @@ describe("FilesService", () => {
   });
 
   describe("download", () => {
+    const payload = Buffer.from("0123456789");
+    const filePath = "/tmp/test-files/Game.zip";
+    const prepareRealDownload = () => {
+      configuration.TESTING.MOCK_FILES = false;
+      gamesService.findOneByGameIdOrFail.mockResolvedValue({
+        id: 42,
+        file_path: filePath,
+        download_count: 0,
+      } as any);
+      gameVersionRepository.find.mockResolvedValue([
+        { id: 1, file_path: filePath, size: 10n, indexed_at: new Date() },
+      ] as any);
+      fsExtra.pathExists.mockResolvedValue(true);
+      fsExtra.stat.mockResolvedValue({
+        size: payload.length,
+        isDirectory: () => false,
+      });
+      fsExtra.createReadStream.mockImplementation((_filename, options) =>
+        Readable.from([payload.subarray(options.start, options.end + 1)]),
+      );
+      return { setHeader: vi.fn(), status: vi.fn(), once: vi.fn() } as any;
+    };
+
+    it.each([
+      ["bytes=3-5", "345", "bytes 3-5/10"],
+      ["bytes=-3", "789", "bytes 7-9/10"],
+      ["bytes=8-", "89", "bytes 8-9/10"],
+      ["bytes=8-200", "89", "bytes 8-9/10"],
+      ["bytes=-200", "0123456789", "bytes 0-9/10"],
+    ])(
+      "serves the correct bytes and partial response for %s",
+      async (range, expected, contentRange) => {
+        const response = prepareRealDownload();
+        const result = await service.download(
+          response,
+          42,
+          1,
+          undefined,
+          range,
+        );
+        const chunks: Buffer[] = [];
+        for await (const chunk of result.getStream())
+          chunks.push(Buffer.from(chunk));
+        expect(Buffer.concat(chunks).toString()).toBe(expected);
+        expect(result.getHeaders().length).toBe(expected.length);
+        expect(response.status).toHaveBeenCalledWith(206);
+        expect(response.setHeader).toHaveBeenCalledWith(
+          "Accept-Ranges",
+          "bytes",
+        );
+        expect(response.setHeader).toHaveBeenCalledWith(
+          "Content-Range",
+          contentRange,
+        );
+      },
+    );
+
+    it.each([
+      "bytes=10-",
+      "bytes=7-3",
+      "bytes=-0",
+      "bytes=-",
+      "bytes=abc-3",
+      "bytes=1-2,4-5",
+      "bytes=1.5-3",
+      "items=0-3",
+      "bytes=9007199254740993-",
+    ])(
+      "rejects %s without serving bytes or counting a download",
+      async (range) => {
+        const response = prepareRealDownload();
+        fsExtra.createReadStream.mockClear();
+        await expect(
+          service.download(response, 42, 1, undefined, range),
+        ).rejects.toMatchObject({ status: 416 });
+        expect(response.setHeader).toHaveBeenCalledWith(
+          "Content-Range",
+          "bytes */10",
+        );
+        expect(fsExtra.createReadStream).not.toHaveBeenCalled();
+        expect(gamesService.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it("serves an empty file without creating a stream with a negative end", async () => {
+      const response = prepareRealDownload();
+      fsExtra.stat.mockResolvedValue({ size: 0, isDirectory: () => false });
+      fsExtra.createReadStream.mockClear();
+      const result = await service.download(response, 42, 1);
+      const chunks: Buffer[] = [];
+      for await (const chunk of result.getStream())
+        chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks)).toHaveLength(0);
+      expect(result.getHeaders().length).toBe(0);
+      expect(fsExtra.createReadStream).not.toHaveBeenCalled();
+      await expect(
+        service.download(response, 42, 1, undefined, "bytes=0-"),
+      ).rejects.toMatchObject({ status: 416 });
+      expect(response.setHeader).toHaveBeenCalledWith(
+        "Content-Range",
+        "bytes */0",
+      );
+    });
+
+    it("archives a directory whose name ends in .zip before the directory index is populated", async () => {
+      const response = prepareRealDownload();
+      const existing = new Set([filePath]);
+      fsExtra.pathExists.mockImplementation(async (filename) =>
+        existing.has(filename),
+      );
+      fsExtra.stat.mockImplementation(async (filename) => ({
+        size: 10,
+        isDirectory: () => filename === filePath,
+      }));
+      fsExtra.move.mockImplementation(async (_from, to) => {
+        existing.add(to);
+      });
+      const snapshot = vi
+        .spyOn(packageManifest, "snapshotGameDirectory")
+        .mockResolvedValue({ size: 10n, fingerprint: "unchanged-directory" });
+      const archive = vi
+        .spyOn(service as any, "archive")
+        .mockResolvedValue(undefined);
+      vi.spyOn(service as any, "scheduleTmpFileDeletion").mockReturnValue(
+        undefined,
+      );
+      try {
+        const result = await service.download(response, 42, 1);
+        result.getStream().destroy();
+        expect(archive).toHaveBeenCalledWith(
+          expect.stringContaining(".part-"),
+          filePath,
+        );
+        expect(snapshot).toHaveBeenCalledTimes(2);
+        expect(fsExtra.createReadStream).toHaveBeenLastCalledWith(
+          expect.stringMatching(/\.tar$/),
+          { start: 0, end: 9 },
+        );
+      } finally {
+        snapshot.mockRestore();
+      }
+    });
+
     it("should return a StreamableFile in testing mock mode", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 42,
@@ -446,28 +604,23 @@ describe("FilesService", () => {
     });
 
     it("parses a suffix-only range", () => {
-      // "bytes=-100" keeps start 0 and sets end to 100 (code behavior).
       expect((service as any).calculateRange("bytes=-100", 2000)).toEqual({
-        start: 0,
-        end: 100,
-        size: 101,
+        start: 1900,
+        end: 1999,
+        size: 100,
       });
     });
 
-    it("keeps the default end when end is before start", () => {
-      expect((service as any).calculateRange("bytes=200-100", 2000)).toEqual({
-        start: 200,
-        end: 1999,
-        size: 1800,
-      });
+    it("rejects an end before the start", () => {
+      expect(() =>
+        (service as any).calculateRange("bytes=200-100", 2000),
+      ).toThrow();
     });
 
-    it("ignores an out-of-bounds start", () => {
-      expect((service as any).calculateRange("bytes=2500-", 2000)).toEqual({
-        start: 0,
-        end: 1999,
-        size: 2000,
-      });
+    it("rejects an out-of-bounds start", () => {
+      expect(() =>
+        (service as any).calculateRange("bytes=2500-", 2000),
+      ).toThrow();
     });
   });
 
@@ -732,6 +885,126 @@ describe("FilesService", () => {
     });
   });
 
+  describe("mergeDuplicateGames", () => {
+    it("should merge games with the same normalized title and release year", async () => {
+      const canonical = {
+        id: 1,
+        title: "The Roottrees are Dead",
+        sort_title: "roottrees are dead",
+        release_date: undefined,
+        download_count: 5,
+        file_path: "/tmp/test-files/A.7z",
+      } as any;
+      const duplicate = {
+        id: 2,
+        title: "The Roottrees Are Dead",
+        sort_title: "roottrees are dead",
+        release_date: undefined,
+        download_count: 3,
+        file_path: "/tmp/test-files/B.rar",
+      } as any;
+
+      gamesService.find.mockResolvedValueOnce([canonical, duplicate]);
+      gameVersionRepository.find.mockResolvedValueOnce([
+        { id: 20, game: { id: 2 }, file_path: "/tmp/test-files/B.rar" },
+      ] as any);
+      gamesService.findOneByGameIdOrFail.mockResolvedValueOnce(canonical);
+      vi.spyOn(
+        service as any,
+        "listAvailableVersionsFromStorage",
+      ).mockResolvedValue([
+        { file_path: "/tmp/test-files/A.7z", indexed_at: new Date() },
+        { file_path: "/tmp/test-files/B.rar", indexed_at: new Date() },
+      ]);
+
+      const merged = await service.mergeDuplicateGames();
+
+      expect(merged).toBe(1);
+      expect(gameVersionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ game: { id: 1 } }),
+      );
+      expect(gamesService.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 2,
+          file_path: expect.stringContaining("merged:2:"),
+        }),
+      );
+      expect(gamesService.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, download_count: 8 }),
+      );
+      expect(gamesService.delete).toHaveBeenCalledWith(2);
+    });
+
+    it("should not merge games that share a title but not the release year", async () => {
+      gamesService.find.mockResolvedValueOnce([
+        {
+          id: 1,
+          sort_title: "game",
+          release_date: new Date("2001-01-01"),
+          download_count: 0,
+        },
+        {
+          id: 2,
+          sort_title: "game",
+          release_date: new Date("2021-01-01"),
+          download_count: 0,
+        },
+      ] as any);
+
+      const merged = await service.mergeDuplicateGames();
+
+      expect(merged).toBe(0);
+      expect(gamesService.delete).not.toHaveBeenCalled();
+    });
+
+    it("should do nothing when there are no duplicate titles", async () => {
+      gamesService.find.mockResolvedValueOnce([
+        { id: 1, sort_title: "alpha", download_count: 0 },
+        { id: 2, sort_title: "beta", download_count: 0 },
+      ] as any);
+
+      await expect(service.mergeDuplicateGames()).resolves.toBe(0);
+      expect(gamesService.delete).not.toHaveBeenCalled();
+    });
+
+    it("should migrate legacy games that have no normalized version rows", async () => {
+      const canonical = {
+        id: 1,
+        sort_title: "game",
+        file_path: "/tmp/test-files/A.zip",
+        download_count: 0,
+      } as any;
+      const duplicate = {
+        id: 2,
+        sort_title: "game",
+        file_path: "/tmp/test-files/B.zip",
+        size: 10n,
+        download_count: 0,
+      } as any;
+
+      gamesService.find.mockResolvedValueOnce([canonical, duplicate]);
+      gameVersionRepository.find.mockResolvedValueOnce([]); // no version rows
+      gamesService.findOneByGameIdOrFail.mockResolvedValueOnce(canonical);
+      vi.spyOn(
+        service as any,
+        "listAvailableVersionsFromStorage",
+      ).mockResolvedValue([
+        { file_path: "/tmp/test-files/A.zip", indexed_at: new Date() },
+        { file_path: "/tmp/test-files/B.zip", indexed_at: new Date() },
+      ]);
+
+      const merged = await service.mergeDuplicateGames();
+
+      expect(merged).toBe(1);
+      expect(gameVersionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          game: { id: 1 },
+          file_path: "/tmp/test-files/B.zip",
+        }),
+      );
+    });
+  });
+
   describe("checkIntegrity", () => {
     it("should delete migrated games that only have soft-deleted version history", async () => {
       configuration.TESTING.MOCK_FILES = false;
@@ -772,6 +1045,188 @@ describe("FilesService", () => {
 
       expect(gameVersionRepository.softDelete).toHaveBeenCalledWith([900]);
       expect(gamesService.delete).toHaveBeenCalledWith(77);
+    });
+
+    it("should keep a version file that was indexed while the scan was running", async () => {
+      configuration.TESTING.MOCK_FILES = false;
+
+      gamesService.find.mockResolvedValueOnce([
+        {
+          id: 1294,
+          file_path: "/tmp/test-files/Order of the Sinking Star.rar",
+        },
+      ] as any);
+
+      gameVersionRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 501,
+            game: { id: 1294 },
+            file_path: "/tmp/test-files/Order of the Sinking Star.rar",
+            version: "1.0",
+            deleted_at: undefined,
+          },
+        ] as any);
+
+      // The scan ran before the file was uploaded, so its snapshot is stale and
+      // knows nothing about the version that the watcher just indexed.
+      vi.spyOn(service as any, "readAllFiles").mockResolvedValueOnce([]);
+      // The file is of course still in storage.
+      fsExtra.pathExists.mockResolvedValue(true);
+
+      await (service as any).checkIntegrity();
+
+      expect(gameVersionRepository.softDelete).not.toHaveBeenCalled();
+      expect(gamesService.delete).not.toHaveBeenCalled();
+    });
+
+    it("should still delete a game whose version file is gone from storage", async () => {
+      configuration.TESTING.MOCK_FILES = false;
+
+      gamesService.find.mockResolvedValueOnce([
+        { id: 1294, file_path: "/tmp/test-files/ZED ZONE.rar" },
+      ] as any);
+
+      gameVersionRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 502,
+            game: { id: 1294 },
+            file_path: "/tmp/test-files/ZED ZONE.rar",
+            version: "1.0",
+            deleted_at: undefined,
+          },
+        ] as any);
+
+      vi.spyOn(service as any, "readAllFiles").mockResolvedValueOnce([]);
+      fsExtra.pathExists.mockImplementation(
+        async (filePath: string) => filePath === "/tmp/test-files",
+      );
+
+      await (service as any).checkIntegrity();
+
+      expect(gameVersionRepository.softDelete).toHaveBeenCalledWith([502]);
+      expect(gamesService.delete).toHaveBeenCalledWith(1294);
+    });
+
+    it("should not delete the whole library when the files volume is unreachable", async () => {
+      configuration.TESTING.MOCK_FILES = false;
+
+      gamesService.find.mockResolvedValueOnce([
+        { id: 1, file_path: "/tmp/test-files/Game.zip" },
+      ] as any);
+
+      vi.spyOn(service as any, "readAllFiles").mockResolvedValueOnce([]);
+      // Neither the volume root nor any file is reachable.
+      fsExtra.pathExists.mockResolvedValue(false);
+
+      await (service as any).checkIntegrity();
+
+      expect(gameVersionRepository.softDelete).not.toHaveBeenCalled();
+      expect(gamesService.delete).not.toHaveBeenCalled();
+    });
+
+    it("should still delete version files that the scan configuration excludes", async () => {
+      configuration.TESTING.MOCK_FILES = false;
+      configuration.GAMES.SEARCH_EXCLUDE_FILE_REGEX = /\.rar$/;
+
+      gamesService.find.mockResolvedValueOnce([
+        { id: 1295, file_path: "/tmp/test-files/Excluded.rar" },
+      ] as any);
+
+      gameVersionRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 503,
+            game: { id: 1295 },
+            file_path: "/tmp/test-files/Excluded.rar",
+            version: "1.0",
+            deleted_at: undefined,
+          },
+        ] as any);
+
+      vi.spyOn(service as any, "readAllFiles").mockResolvedValueOnce([]);
+      // Present on disk, but the indexer no longer wants it in the library.
+      fsExtra.pathExists.mockResolvedValue(true);
+
+      await (service as any).checkIntegrity();
+
+      expect(gamesService.delete).toHaveBeenCalledWith(1295);
+    });
+
+    it("should only soft-delete the versions that are really gone", async () => {
+      configuration.TESTING.MOCK_FILES = false;
+
+      gamesService.find.mockResolvedValueOnce([
+        { id: 42, file_path: "/tmp/test-files/Kept.zip" },
+      ] as any);
+
+      gameVersionRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            game: { id: 42 },
+            file_path: "/tmp/test-files/Kept.zip",
+            version: "1.0",
+            deleted_at: undefined,
+          },
+          {
+            id: 2,
+            game: { id: 42 },
+            file_path: "/tmp/test-files/Uploaded While Scanning.rar",
+            version: "1.1",
+            deleted_at: undefined,
+          },
+          {
+            id: 3,
+            game: { id: 42 },
+            file_path: "/tmp/test-files/Removed From Disk.zip",
+            version: "1.2",
+            deleted_at: undefined,
+          },
+        ] as any);
+
+      vi.spyOn(service as any, "readAllFiles").mockResolvedValueOnce([
+        { path: "/tmp/test-files/Kept.zip", size: 1 },
+      ]);
+      fsExtra.pathExists.mockImplementation(
+        async (filePath: string) =>
+          filePath === "/tmp/test-files" ||
+          filePath.includes("Uploaded While Scanning"),
+      );
+
+      await (service as any).checkIntegrity();
+
+      expect(gameVersionRepository.softDelete).toHaveBeenCalledWith([3]);
+      expect(gamesService.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("runScheduledIndex", () => {
+    it("should not start a second scan while one is still running", async () => {
+      const indexSpy = vi
+        .spyOn(service, "indexAllFiles")
+        .mockResolvedValue(undefined as any);
+      (service as any).fullIndexInProgress = true;
+
+      await (service as any).runScheduledIndex();
+
+      expect(indexSpy).not.toHaveBeenCalled();
+    });
+
+    it("should start a scan when none is running", async () => {
+      const indexSpy = vi
+        .spyOn(service, "indexAllFiles")
+        .mockResolvedValue(undefined as any);
+      (service as any).fullIndexInProgress = false;
+
+      await (service as any).runScheduledIndex();
+
+      expect(indexSpy).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,4 +1,6 @@
 import type { Mock } from "vitest";
+import { MINIMUM_ROLE_KEY } from "../../decorators/minimum-role.decorator.js";
+import { Role } from "../users/models/role.enum.js";
 import { MetadataController } from "./metadata.controller.js";
 
 describe("MetadataController", () => {
@@ -20,6 +22,23 @@ describe("MetadataController", () => {
     const result = await controller.getProviders();
     expect(result).toEqual([{ slug: "igdb" }]);
     expect(metadataService.providers[0].getDto).toHaveBeenCalled();
+  });
+  it("queues a real metadata recache for administrators only", async () => {
+    const recache = vi
+      .fn()
+      .mockResolvedValue({ queued_games: 42, processing: true });
+    (metadataService as any).recacheAll = recache;
+    expect(await controller.recacheAll()).toEqual({
+      queued_games: 42,
+      processing: true,
+    });
+    expect(recache).toHaveBeenCalledOnce();
+    expect(
+      Reflect.getMetadata(
+        MINIMUM_ROLE_KEY,
+        MetadataController.prototype.recacheAll,
+      ),
+    ).toBe(Role.ADMIN);
   });
 
   it("searches via the provider resolved by slug", async () => {

@@ -1,4 +1,5 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import fsExtra from "fs-extra";
 import configuration from "../../configuration.js";
 
 import fileTypeCheckerMock from "file-type-checker";
@@ -36,6 +37,31 @@ vi.mock("file-type-checker", () => ({
     detectFile: vi.fn(),
   },
 }));
+
+// The upload is streamed to disk, so validation reads the header of the
+// temporary file instead of an in-memory buffer.
+vi.mock("../../uploads/streamed-upload.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    readFileHeader: vi.fn().mockResolvedValue(Buffer.from("PK\x03\x04")),
+  };
+});
+
+vi.mock("fs-extra", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  const overrides = {
+    ensureDir: vi.fn().mockResolvedValue(undefined),
+    move: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    stat: vi.fn(),
+  };
+  return {
+    ...actual,
+    ...overrides,
+    default: { ...(actual as any).default, ...overrides },
+  };
+});
 
 describe("SavefileService", () => {
   let service: SavefileService;
@@ -134,7 +160,7 @@ describe("SavefileService", () => {
       await service.upload(
         1,
         42,
-        { buffer: Buffer.from("PK\x03\x04") } as any,
+        { path: "/savefiles/.playstash-upload-temp" } as any,
         "testuser",
       );
 
@@ -153,11 +179,47 @@ describe("SavefileService", () => {
         service.upload(
           1,
           42,
-          { buffer: Buffer.from("PK\x03\x04") } as any,
+          { path: "/savefiles/.playstash-upload-temp" } as any,
           "testuser",
           "not-a-uuid",
         ),
       ).rejects.toThrow(BadRequestException);
+      expect(vi.mocked(fsExtra.remove)).toHaveBeenCalledWith(
+        "/savefiles/.playstash-upload-temp",
+      );
+    });
+
+    it("should move the streamed upload to its generated path", async () => {
+      fileTypeChecker.detectFile.mockReturnValue({
+        extension: "zip",
+        mimeType: "application/zip",
+      });
+
+      const config = configuration as any;
+      const previousMockFiles = config.TESTING.MOCK_FILES;
+      config.TESTING.MOCK_FILES = false;
+      const installationId = "11111111-1111-4111-8111-111111111111";
+      try {
+        await service.upload(
+          1,
+          42,
+          { path: "/savefiles/.playstash-upload-temp" } as any,
+          "testuser",
+          installationId,
+        );
+
+        expect(vi.mocked(fsExtra.move)).toHaveBeenCalledWith(
+          "/savefiles/.playstash-upload-temp",
+          expect.stringMatching(
+            new RegExp(
+              `^/savefiles/users/1/games/42/\\d+_${installationId}\\.zip$`,
+            ),
+          ),
+          { overwrite: true },
+        );
+      } finally {
+        config.TESTING.MOCK_FILES = previousMockFiles;
+      }
     });
   });
 
@@ -181,6 +243,58 @@ describe("SavefileService", () => {
       expect(
         mockUsersService.checkIfUsernameMatchesIdOrIsAdminOrThrow,
       ).toHaveBeenCalledWith(1, "testuser");
+    });
+  });
+
+  describe("save version management", () => {
+    it("checks owner/admin permission before listing or deleting versions", async () => {
+      mockUsersService.checkIfUsernameMatchesIdOrIsAdminOrThrow.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(service.list(1, 42, "other")).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(
+        service.deleteVersion(1, 42, "1234567890123.zip", "other"),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("returns an empty list when there are no save archives", async () => {
+      expect(await service.list(1, 42, "owner")).toEqual([]);
+      expect(
+        mockUsersService.checkIfUsernameMatchesIdOrIsAdminOrThrow,
+      ).toHaveBeenCalledWith(1, "owner");
+    });
+
+    it.each([
+      "../1234567890123.zip",
+      "..\\1234567890123.zip",
+      "/other/save.zip",
+      "1234567890123.zip\r\nOther: header",
+    ])("rejects an unsafe version filename: %s", async (filename) => {
+      await expect(
+        service.downloadVersion(1, 42, filename, "owner"),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("lists newest-first save metadata without exposing server paths", async () => {
+      const filename = "1791849600000_123e4567-e89b-42d3-a456-426614174000.zip";
+      vi.spyOn(
+        service as any,
+        "findSavefilesByUserIdAndGameIdOrFail",
+      ).mockResolvedValue([`/savefiles/users/1/games/42/${filename}`]);
+      (fsExtra.stat as any).mockResolvedValue({
+        size: 25,
+        mtime: new Date("2026-10-13"),
+      });
+      expect(await service.list(1, 42, "owner")).toEqual([
+        {
+          filename,
+          size: 25,
+          created_at: new Date(1791849600000),
+          installation_id: "123e4567-e89b-42d3-a456-426614174000",
+        },
+      ]);
     });
   });
 });

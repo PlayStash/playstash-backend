@@ -1,11 +1,8 @@
 import {
   Controller,
-  FileTypeValidator,
   Get,
   Logger,
-  MaxFileSizeValidator,
   Param,
-  ParseFilePipe,
   Post,
   Req,
   Request,
@@ -25,16 +22,20 @@ import {
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
-import bytes from "bytes";
-import { type Response } from "express";
+import { type Request as ExpressRequest, type Response } from "express";
 import fsExtra from "fs-extra";
 const { createReadStream, stat } = fsExtra;
 
 import configuration from "../../configuration.js";
 import { DisableApiIf } from "../../decorators/disable-api-if.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
+import {
+  REQUIRED_UPLOAD_FILE_PIPE,
+  UPLOAD_FIELD_NAME,
+} from "../../uploads/streamed-upload.js";
 import { Role } from "../users/models/role.enum.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
+import { mediaUploadMulterOptions } from "./media-upload.multer.js";
 import { Media } from "./media.entity.js";
 import { MediaService } from "./media.service.js";
 
@@ -62,15 +63,16 @@ export class MediaController {
   @MinimumRole(Role.GUEST)
   async getMediaByMediaId(
     @Param("id") id: string,
-    @Req() req: Request,
+    @Req() req: ExpressRequest & { user?: PlaystashUser },
     @Res() res: Response,
   ): Promise<void> {
+    if (req.user)
+      await this.mediaService.assertMediaAccess(Number(id), req.user);
     const media = await this.mediaService.findOneByMediaIdOrFail(Number(id));
     res.set("Content-Type", media.type);
 
-    // Media is keyed by a unique id and never changes, so allow long-lived
-    // HTTP caching so clients can reuse covers/art without re-downloading.
-    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    // Conditional requests can reuse cached pixels after authorization is rechecked.
+    res.set("Cache-Control", "private, no-cache");
 
     try {
       const fileStat = await stat(media.file_path ?? "");
@@ -78,8 +80,8 @@ export class MediaController {
       res.set("Last-Modified", fileStat.mtime.toUTCString());
       res.set("ETag", etag);
 
-      const ifNoneMatch = req.headers.get("if-none-match");
-      const ifModifiedSince = req.headers.get("if-modified-since");
+      const ifNoneMatch = req.headers["if-none-match"]?.toString();
+      const ifModifiedSince = req.headers["if-modified-since"]?.toString();
       const notModified =
         ifNoneMatch?.includes(etag) ||
         (ifNoneMatch == null &&
@@ -141,30 +143,14 @@ export class MediaController {
     type: () => Media,
     description: "The uploaded media",
   })
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor(UPLOAD_FIELD_NAME, mediaUploadMulterOptions))
   @MinimumRole(Role.USER)
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   postMedia(
     @Request() req: { user: PlaystashUser },
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({
-            maxSize:
-              configuration.MEDIA.MAX_SIZE ??
-              bytes("100mb") ??
-              Number.MAX_SAFE_INTEGER,
-            message: `File exceeds maximum allowed size of ${bytes(
-              configuration.MEDIA.MAX_SIZE ??
-                bytes("100mb") ??
-                Number.MAX_SAFE_INTEGER,
-              { unit: "MB", thousandsSeparator: "." },
-            )}.`,
-          }),
-          new FileTypeValidator({ fileType: /^(image|video|audio)\/.*/ }),
-        ],
-      }),
-    )
+    // The interceptor above streams the upload to a temporary file on disk; the
+    // media service validates the content and moves it into the media volume.
+    @UploadedFile(REQUIRED_UPLOAD_FILE_PIPE)
     file: Express.Multer.File,
   ) {
     return this.mediaService.upload(file, req.user.username);

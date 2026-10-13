@@ -1,0 +1,464 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "PlayStash activity and chat",
+    "version": "17.1.0",
+    "description": "Socket.IO v4 event names on the default namespace, using /socket.io. Authenticate with X-Api-Key handshake headers or Socket.IO auth {api_key}. Replies use named response events, not acknowledgment callbacks. Chat is transient: at most 100 conversations of 100 messages retained for 24 hours; server restarts clear history. See docs/chat.md for permission and delivery semantics."
+  },
+  "servers": {
+    "local": {
+      "host": "localhost:8080",
+      "pathname": "/socket.io",
+      "protocol": "ws",
+      "description": "Socket.IO/Engine.IO transport; use a Socket.IO client, not raw JSON WebSocket frames."
+    }
+  },
+  "channels": {
+    "set-activity": {
+      "address": "set-activity",
+      "messages": {
+        "receive": {
+          "name": "set-activity",
+          "payload": {
+            "$ref": "#/components/schemas/Activity"
+          }
+        }
+      }
+    },
+    "get-activities": {
+      "address": "get-activities",
+      "messages": {
+        "receive": {
+          "name": "get-activities",
+          "payload": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "activities": {
+      "address": "activities",
+      "messages": {
+        "send": {
+          "name": "activities",
+          "payload": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          }
+        }
+      }
+    },
+    "activity": {
+      "address": "activity",
+      "messages": {
+        "send": {
+          "name": "activity",
+          "payload": {
+            "$ref": "#/components/schemas/Activity"
+          }
+        }
+      }
+    },
+    "remove-activity": {
+      "address": "remove-activity",
+      "messages": {
+        "send": {
+          "name": "remove-activity",
+          "payload": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "user_id"
+            ]
+          }
+        }
+      }
+    },
+    "chat-send": {
+      "address": "chat-send",
+      "messages": {
+        "receive": {
+          "name": "chat-send",
+          "payload": {
+            "$ref": "#/components/schemas/ChatSendDto"
+          }
+        }
+      }
+    },
+    "chat-sent": {
+      "address": "chat-sent",
+      "messages": {
+        "send": {
+          "name": "chat-sent",
+          "payload": {
+            "$ref": "#/components/schemas/ChatMessageDto"
+          }
+        }
+      }
+    },
+    "chat-message": {
+      "address": "chat-message",
+      "messages": {
+        "send": {
+          "name": "chat-message",
+          "payload": {
+            "$ref": "#/components/schemas/ChatMessageDto"
+          }
+        }
+      }
+    },
+    "chat-history": {
+      "address": "chat-history",
+      "messages": {
+        "receive": {
+          "name": "chat-history",
+          "payload": {
+            "$ref": "#/components/schemas/ChatHistoryDto"
+          }
+        },
+        "send": {
+          "name": "chat-history",
+          "payload": {
+            "type": "object",
+            "properties": {
+              "conversation": {
+                "type": "string"
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ChatMessageDto"
+                }
+              }
+            },
+            "required": [
+              "conversation",
+              "messages"
+            ]
+          }
+        }
+      }
+    },
+    "chat-leave": {
+      "address": "chat-leave",
+      "messages": {
+        "receive": {
+          "name": "chat-leave",
+          "payload": {
+            "$ref": "#/components/schemas/ChatHistoryDto"
+          }
+        }
+      }
+    },
+    "chat-left": {
+      "address": "chat-left",
+      "messages": {
+        "send": {
+          "name": "chat-left",
+          "payload": {
+            "type": "object",
+            "properties": {
+              "conversation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversation"
+            ]
+          }
+        }
+      }
+    },
+    "exception": {
+      "address": "exception",
+      "messages": {
+        "send": {
+          "name": "exception",
+          "payload": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "receive_set_activity": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/set-activity"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/set-activity/messages/receive"
+        }
+      ]
+    },
+    "receive_get_activities": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/get-activities"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/get-activities/messages/receive"
+        }
+      ]
+    },
+    "send_activities": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/activities"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/activities/messages/send"
+        }
+      ]
+    },
+    "send_activity": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/activity"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/activity/messages/send"
+        }
+      ]
+    },
+    "send_remove_activity": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/remove-activity"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/remove-activity/messages/send"
+        }
+      ]
+    },
+    "receive_chat_send": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/chat-send"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-send/messages/receive"
+        }
+      ]
+    },
+    "send_chat_sent": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/chat-sent"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-sent/messages/send"
+        }
+      ]
+    },
+    "send_chat_message": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/chat-message"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-message/messages/send"
+        }
+      ]
+    },
+    "receive_chat_history": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/chat-history"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-history/messages/receive"
+        }
+      ]
+    },
+    "send_chat_history": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/chat-history"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-history/messages/send"
+        }
+      ]
+    },
+    "receive_chat_leave": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/chat-leave"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-leave/messages/receive"
+        }
+      ]
+    },
+    "send_chat_left": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/chat-left"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/chat-left/messages/send"
+        }
+      ]
+    },
+    "send_exception": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/exception"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/exception/messages/send"
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "Activity": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "number",
+            "description": "The id of the user this activity belongs to."
+          },
+          "socket_id": {
+            "type": "string",
+            "description": "The socket id of the user this activity belongs to."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ONLINE",
+              "BUSY",
+              "INVISIBLE",
+              "PLAYING"
+            ],
+            "example": "PLAYING",
+            "description": "The online-state to set the user to"
+          },
+          "game_id": {
+            "type": "number",
+            "description": "The game's id. Only required if the state is 'PLAYING'."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "ChatSendDto": {
+        "type": "object",
+        "properties": {
+          "room": {
+            "type": "string",
+            "example": "lobby",
+            "description": "lobby or game:<positive game ID>; defaults to lobby. Mutually exclusive with recipient_user_id."
+          },
+          "recipient_user_id": {
+            "type": "number",
+            "description": "User ID for a direct conversation."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Plain text; clients must render it as text, never HTML."
+          },
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional UUID v4 for retry-safe delivery within retained history."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "ChatHistoryDto": {
+        "type": "object",
+        "properties": {
+          "room": {
+            "type": "string",
+            "example": "lobby",
+            "description": "lobby or game:<positive game ID>; defaults to lobby. Mutually exclusive with recipient_user_id."
+          },
+          "recipient_user_id": {
+            "type": "number",
+            "description": "User ID for a direct conversation."
+          },
+          "limit": {
+            "type": "number",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "ChatMessageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "number"
+          },
+          "username": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          },
+          "recipient_user_id": {
+            "type": "number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "username",
+          "text",
+          "created_at"
+        ]
+      }
+    }
+  }
+}

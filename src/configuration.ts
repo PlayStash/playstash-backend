@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import packageJson from "../package.json" with { type: "json" };
 import globals from "./globals.js";
+import { createDownloadRateProvider } from "./modules/games/download-bandwidth.js";
 const { readFileSync } = fsExtra;
 const { toLower } = lodash;
 
@@ -192,8 +193,11 @@ function parseKibibytesToBytes(
   environmentVariable: string | undefined,
   defaultValue?: number,
 ): number | undefined {
+  if (environmentVariable === undefined || !environmentVariable.trim()) {
+    return defaultValue;
+  }
   const bytes = Number(environmentVariable) * 1024;
-  if (Number.isNaN(bytes) || bytes <= 0 || bytes > Number.MAX_SAFE_INTEGER) {
+  if (Number.isNaN(bytes) || bytes < 0 || bytes > Number.MAX_SAFE_INTEGER) {
     return defaultValue ?? undefined;
   }
   return bytes;
@@ -251,6 +255,18 @@ const configuration = {
     MAX_DOWNLOAD_BANDWIDTH_IN_KBPS: parseKibibytesToBytes(
       resolveEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS"),
     ),
+    MAX_DOWNLOAD_BANDWIDTH_SCHEDULE:
+      resolveEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE") || undefined,
+    MAX_DOWNLOAD_BANDWIDTH_SCHEDULE_TIMEZONE:
+      resolveEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_SCHEDULE_TIMEZONE") ||
+      undefined,
+    MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE: parseKibibytesToBytes(
+      resolveEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_IN_SCHEDULE"),
+    ),
+    MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE: parseKibibytesToBytes(
+      resolveEnv("SERVER_MAX_DOWNLOAD_BANDWIDTH_IN_KBPS_OUT_SCHEDULE"),
+      0,
+    ),
     ONLINE_ACTIVITIES_DISABLED: parseBooleanEnvVariable(
       resolveEnv("SERVER_ONLINE_ACTIVITIES_DISABLED"),
     ),
@@ -271,6 +287,8 @@ const configuration = {
       true,
     ),
     VERSION: resolveEnv("WEB_UI_VERSION") || undefined,
+    LOCAL_BUNDLE: resolveEnv("WEB_UI_LOCAL_BUNDLE") || undefined,
+    GITHUB_TOKEN: resolveEnv("WEB_UI_GITHUB_TOKEN") || undefined,
   } as const,
   VOLUMES: {
     CONFIG: parsePath(resolveEnv("VOLUMES_CONFIG"), "/config"),
@@ -374,6 +392,17 @@ const configuration = {
   } as const,
   METADATA: {
     TTL_IN_DAYS: parseNumber(resolveEnv("METADATA_TTL_IN_DAYS"), 30),
+    STEAM: {
+      ENABLED: parseBooleanEnvVariable(
+        resolveEnv("METADATA_STEAM_ENABLED"),
+        false,
+      ),
+      PRIORITY: parseNumber(resolveEnv("METADATA_STEAM_PRIORITY"), 5),
+      REQUEST_INTERVAL_MS: parseNumber(
+        resolveEnv("METADATA_STEAM_REQUEST_INTERVAL_MS"),
+        1000,
+      ),
+    } as const,
     IGDB: {
       ENABLED: parseBooleanEnvVariable(
         resolveEnv("METADATA_IGDB_ENABLED"),
@@ -400,6 +429,15 @@ const configuration = {
     LOG_HTTP_TRAFFIC_ENABLED: parseBooleanEnvVariable(
       resolveEnv("TESTING_LOG_HTTP_TRAFFIC_ENABLED"),
     ),
+  } as const,
+  NOTIFICATIONS: {
+    WEBHOOK_URL: resolveEnv("NOTIFICATIONS_WEBHOOK_URL") || undefined,
+    WEBHOOK_TOKEN: resolveEnv("NOTIFICATIONS_WEBHOOK_TOKEN") || undefined,
+    WEBHOOK_FORMAT: resolveEnv("NOTIFICATIONS_WEBHOOK_FORMAT") || "json",
+  } as const,
+  METRICS: {
+    ENABLED: parseBooleanEnvVariable(resolveEnv("METRICS_ENABLED"), true),
+    RETENTION_DAYS: parseNumber(resolveEnv("METRICS_RETENTION_DAYS"), 365),
   } as const,
   AUTH: {
     SEED:
@@ -451,6 +489,24 @@ const configuration = {
   } as const,
 } as const;
 
+// Reject invalid schedules at startup rather than during a client's transfer.
+createDownloadRateProvider(configuration.SERVER)();
+if (configuration.NOTIFICATIONS.WEBHOOK_URL) {
+  const url = new URL(configuration.NOTIFICATIONS.WEBHOOK_URL);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error(
+      "NOTIFICATIONS_WEBHOOK_URL must be an HTTP(S) URL without embedded credentials.",
+    );
+  }
+}
+if (!["json", "discord"].includes(configuration.NOTIFICATIONS.WEBHOOK_FORMAT)) {
+  throw new Error("NOTIFICATIONS_WEBHOOK_FORMAT must be json or discord.");
+}
+
 export const CONFIG_NAMESPACE = "playstash";
 
 export const playstashConfiguration = registerAs(
@@ -482,6 +538,17 @@ export function getCensoredConfiguration() {
     ? "**REDACTED**"
     : null;
   censoredConfig.AUTH.SEED = censoredConfig.AUTH.SEED ? "**REDACTED**" : null;
+  censoredConfig.WEB_UI.GITHUB_TOKEN = censoredConfig.WEB_UI.GITHUB_TOKEN
+    ? "**REDACTED**"
+    : null;
+  censoredConfig.NOTIFICATIONS.WEBHOOK_URL = censoredConfig.NOTIFICATIONS
+    .WEBHOOK_URL
+    ? "**REDACTED**"
+    : null;
+  censoredConfig.NOTIFICATIONS.WEBHOOK_TOKEN = censoredConfig.NOTIFICATIONS
+    .WEBHOOK_TOKEN
+    ? "**REDACTED**"
+    : null;
   return censoredConfig;
 }
 

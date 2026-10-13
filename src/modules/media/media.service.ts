@@ -19,7 +19,12 @@ const { move, pathExists, remove, writeFile } = fsExtra;
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import { logMedia } from "../../logging.js";
+import { discardStreamedUpload } from "../../uploads/streamed-upload.js";
+import { canAccessGame } from "../games/game-access.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
+import type { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
+import { normalizeMediaImage } from "./image-conversion.js";
 import { Media } from "./media.entity.js";
 
 @Injectable()
@@ -34,6 +39,41 @@ export class MediaService {
     private readonly usersService: any,
     @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
+
+  public async assertMediaAccess(
+    id: number,
+    requester: PlaystashUser,
+  ): Promise<void> {
+    const games = await this.mediaRepository.manager
+      .getRepository(PlaystashGame)
+      .find({
+        where: [
+          { metadata: { cover: { id } } },
+          { metadata: { background: { id } } },
+          { user_metadata: { cover: { id } } },
+          { user_metadata: { background: { id } } },
+          { provider_metadata: { cover: { id } } },
+          { provider_metadata: { background: { id } } },
+        ],
+        relations: { allowed_users: true, metadata: true },
+        withDeleted: true,
+      });
+    if (!games.length) return; // Standalone uploads and profile images.
+    const userAge = await this.usersService.findUserAgeByUsername(
+      requester.username,
+    );
+    if (
+      !games.some(
+        (game) =>
+          canAccessGame(game, requester) &&
+          (userAge === undefined ||
+            game.metadata?.age_rating == null ||
+            game.metadata.age_rating <= userAge),
+      )
+    ) {
+      throw new NotFoundException("Media was not found.");
+    }
+  }
 
   public async isAvailable(id: number): Promise<boolean> {
     try {
@@ -89,14 +129,22 @@ export class MediaService {
         message: `Downloaded media.`,
         media: logMedia(media),
       });
-      const validatedMediaBuffer = await this.validate(mediaBuffer);
+      const normalized = await normalizeMediaImage(
+        mediaBuffer,
+        this.config.MEDIA.SUPPORTED_FORMATS,
+      );
+      this.checkConvertedSize(normalized.converted);
+      const validatedMediaBuffer = normalized.type;
 
       media.type = validatedMediaBuffer.mimeType;
       media.file_path = `${this.config.VOLUMES.MEDIA}/${randomUUID()}.${
         validatedMediaBuffer.extension
       }`;
 
-      await this.saveToFileSystem(media.file_path, mediaBuffer);
+      await this.saveToFileSystem(
+        media.file_path,
+        normalized.converted ?? mediaBuffer,
+      );
       return await this.mediaRepository.save(media);
     } catch (error) {
       // Clean up the file if it was already written to disk before the DB save
@@ -209,10 +257,29 @@ export class MediaService {
     file: Express.Multer.File,
     username: string,
   ): Promise<Media> {
-    const media = await this.createFromUpload(file, username);
+    const tempPath = file.path;
+
+    // Validation failures are the caller's fault, so let the BadRequestException
+    // through unchanged, but always clean up the streamed temporary file.
+    let media: Media;
+    try {
+      media = await this.createFromUpload(file, username);
+    } catch (error) {
+      await discardStreamedUpload(tempPath, this.logger);
+      throw error;
+    }
 
     try {
-      await this.saveToFileSystem(media.file_path ?? "", file.buffer);
+      await this.persistUploadedFile(tempPath, media.file_path ?? "");
+    } catch (error) {
+      await discardStreamedUpload(tempPath, this.logger);
+      throw new InternalServerErrorException(
+        "Error uploading media. Please retry or use a different file.",
+        { cause: error },
+      );
+    }
+
+    try {
       const uploadedMedia = await this.mediaRepository.save(media);
       this.logger.log({
         message: "Media successfully uploaded.",
@@ -226,6 +293,33 @@ export class MediaService {
         { cause: error },
       );
     }
+  }
+
+  /**
+   * Moves an upload that was streamed to disk to its final location in the
+   * media volume.
+   *
+   * @param tempPath - The temporary file the upload was streamed to.
+   * @param finalPath - The final path within the media volume.
+   */
+  private async persistUploadedFile(
+    tempPath: string,
+    finalPath: string,
+  ): Promise<void> {
+    if (this.config.TESTING.MOCK_FILES) {
+      this.logger.warn({
+        message: "Not saving media to the filesystem.",
+        reason: "TESTING_MOCK_FILES is set to true.",
+      });
+      await discardStreamedUpload(tempPath, this.logger);
+      return;
+    }
+
+    await move(tempPath, finalPath, { overwrite: true });
+    this.logger.debug({
+      message: "Media successfully saved to filesystem.",
+      path: finalPath,
+    });
   }
 
   private async validate(mediaBuffer: Buffer) {
@@ -256,7 +350,13 @@ export class MediaService {
     file: Express.Multer.File,
     username?: string,
   ): Promise<Media> {
-    const fileType = await this.validate(file.buffer);
+    const normalized = await normalizeMediaImage(
+      file.path,
+      this.config.MEDIA.SUPPORTED_FORMATS,
+    );
+    this.checkConvertedSize(normalized.converted);
+    const fileType = normalized.type;
+    if (normalized.converted) await writeFile(file.path, normalized.converted);
     const media = new Media();
     media.type = fileType.mimeType;
 
@@ -269,5 +369,17 @@ export class MediaService {
       fileType.extension
     }`;
     return media;
+  }
+
+  private checkConvertedSize(converted?: Buffer): void {
+    if (
+      converted &&
+      this.config.MEDIA.MAX_SIZE &&
+      converted.length > this.config.MEDIA.MAX_SIZE
+    ) {
+      throw new BadRequestException(
+        "The converted image exceeds MEDIA_MAX_SIZE.",
+      );
+    }
   }
 }

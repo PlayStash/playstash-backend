@@ -3,13 +3,23 @@ import { SavefileController } from "./savefile.controller.js";
 
 describe("SavefileController", () => {
   let controller: SavefileController;
-  let savefileService: { upload: Mock; download: Mock; delete: Mock };
+  let savefileService: {
+    upload: Mock;
+    download: Mock;
+    delete: Mock;
+    list: Mock;
+    downloadVersion: Mock;
+    deleteVersion: Mock;
+  };
 
   beforeEach(() => {
     savefileService = {
       upload: vi.fn(),
       download: vi.fn(),
       delete: vi.fn(),
+      list: vi.fn(),
+      downloadVersion: vi.fn(),
+      deleteVersion: vi.fn(),
     };
     controller = new SavefileController(savefileService as any);
   });
@@ -39,7 +49,32 @@ describe("SavefileController", () => {
 
   it("deletes a save file", async () => {
     const params = { user_id: 1, game_id: 2 } as any;
-    await controller.deleteSaveFileByUserIdAndGameId(params);
-    expect(savefileService.delete).toHaveBeenCalledWith(1, 2);
+    await controller.deleteSaveFileByUserIdAndGameId(params, {
+      user: { username: "dev" },
+    } as any);
+    expect(savefileService.delete).toHaveBeenCalledWith(1, 2, "dev");
+  });
+
+  it("passes the authenticated executor to every save version operation", async () => {
+    const req = { user: { username: "owner" } } as any;
+    await controller.getSavefileVersions(
+      { user_id: 1, game_id: 2 } as any,
+      req,
+    );
+    await controller.getSavefileVersion(1, 2, "1234567890123.zip", req);
+    await controller.deleteSavefileVersion(1, 2, "1234567890123.zip", req);
+    expect(savefileService.list).toHaveBeenCalledWith(1, 2, "owner");
+    expect(savefileService.downloadVersion).toHaveBeenCalledWith(
+      1,
+      2,
+      "1234567890123.zip",
+      "owner",
+    );
+    expect(savefileService.deleteVersion).toHaveBeenCalledWith(
+      1,
+      2,
+      "1234567890123.zip",
+      "owner",
+    );
   });
 });

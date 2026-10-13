@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
@@ -6,11 +7,12 @@ import { Repository } from "typeorm";
 import type { Mocked } from "vitest";
 import { GameMetadataService } from "../metadata/games/game.metadata.service.js";
 import { MetadataService } from "../metadata/metadata.service.js";
+import { Role } from "../users/models/role.enum.js";
 import { GameVersion } from "./game-version.entity.js";
 import { GamesService } from "./games.service.js";
-import { PlaystashGame } from "./playstash-game.entity.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { GameType } from "./models/game-type.enum.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 
 describe("GamesService", () => {
   let service: GamesService;
@@ -71,6 +73,38 @@ describe("GamesService", () => {
   });
 
   describe("generateSortTitle", () => {
+    it("prevents editors from granting themselves restricted game access", async () => {
+      await expect(
+        service.update(1, { access_restricted: true, allowed_user_ids: [7] }, {
+          id: 7,
+          role: Role.EDITOR,
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(gamesRepository.save).not.toHaveBeenCalled();
+    });
+    it("persists administrator access changes even without metadata changes", async () => {
+      const game = createMockGame();
+      gamesRepository.findOneOrFail.mockResolvedValue(game);
+      gamesRepository.save.mockImplementation(async (value) => value as any);
+      metadataService.merge.mockResolvedValue(game);
+      let savedAccess: unknown;
+      gamesRepository.save.mockImplementation(async (value) => {
+        savedAccess = {
+          access_restricted: value.access_restricted,
+          allowed_users: value.allowed_users?.map((user) => ({ id: user.id })),
+        };
+        return value as any;
+      });
+      await service.update(
+        1,
+        { access_restricted: true, allowed_user_ids: [] },
+        { id: 7, role: Role.ADMIN } as any,
+      );
+      expect(savedAccess).toEqual({
+        access_restricted: true,
+        allowed_users: [],
+      });
+    });
     it("should remove leading 'the'", () => {
       expect(service.generateSortTitle("The Witcher 3")).toBe("witcher 3");
     });
@@ -304,6 +338,16 @@ describe("GamesService", () => {
           genres: ["RPG"],
           developers: ["Studio"],
           publishers: ["Pub"],
+          archive_password: "archive-secret",
+          system_requirements_minimum: "4 GB RAM",
+          system_requirements_recommended: "8 GB RAM",
+          launch_profiles: [
+            {
+              name: "Play",
+              executable: "bin/game.exe",
+              parameters: "-fullscreen",
+            },
+          ],
         },
       } as any);
 
@@ -312,6 +356,16 @@ describe("GamesService", () => {
       expect(game.user_metadata).toMatchObject({
         title: "New Title",
         rating: 90,
+        archive_password: "archive-secret",
+        system_requirements_minimum: "4 GB RAM",
+        system_requirements_recommended: "8 GB RAM",
+        launch_profiles: [
+          {
+            name: "Play",
+            executable: "bin/game.exe",
+            parameters: "-fullscreen",
+          },
+        ],
         tags: expect.arrayContaining([
           expect.objectContaining({ name: "Action", provider_slug: "user" }),
         ]),
@@ -328,6 +382,46 @@ describe("GamesService", () => {
       gamesRepository.find.mockResolvedValueOnce([]); // by title candidates
       const [existence] = await service.checkIfExistsInDatabase(game);
       expect(existence).toBe(GameExistence.DOES_NOT_EXIST);
+    });
+
+    it("should match title candidates by the normalized sort title", async () => {
+      const game = createMockGame({
+        title: "The Roottrees are Dead",
+        sort_title: "roottrees are dead",
+      });
+      gamesRepository.findOne.mockResolvedValueOnce(null); // by file_path
+      gamesRepository.find.mockResolvedValueOnce([]);
+
+      await service.checkIfExistsInDatabase(game);
+
+      expect(gamesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: [
+            { title: "The Roottrees are Dead" },
+            { sort_title: "roottrees are dead" },
+          ],
+        }),
+      );
+    });
+
+    it("should merge a same-title file that only differs in casing", async () => {
+      const game = createMockGame({
+        title: "The Roottrees Are Dead",
+        sort_title: "roottrees are dead",
+      });
+      gamesRepository.findOne.mockResolvedValueOnce(null); // by file_path
+      gamesRepository.find.mockResolvedValueOnce([
+        createMockGame({
+          id: 2,
+          title: "The Roottrees are Dead",
+          sort_title: "roottrees are dead",
+          deleted_at: undefined,
+        }),
+      ]);
+
+      const [existence] = await service.checkIfExistsInDatabase(game);
+
+      expect(existence).not.toBe(GameExistence.DOES_NOT_EXIST);
     });
 
     it("should not merge year-tagged games across different years", async () => {

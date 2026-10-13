@@ -184,6 +184,18 @@ describe("GameMetadataService", () => {
   // ─── save (upsert) ────────────────────────────────────────────────
 
   describe("save", () => {
+    it("persists shared extraction, requirements and launch defaults", async () => {
+      const metadata = {
+        provider_slug: "user",
+        provider_data_id: "1",
+        archive_password: "secret",
+        system_requirements_minimum: "4 GB RAM",
+        system_requirements_recommended: "8 GB RAM",
+        launch_profiles: [{ name: "Play", executable: "game.exe" }],
+      };
+      await service.save(metadata);
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining(metadata));
+    });
     it("should create new metadata when none exists", async () => {
       (repo.findOne as Mock).mockResolvedValue(null);
 

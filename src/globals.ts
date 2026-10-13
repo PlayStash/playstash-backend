@@ -8,6 +8,7 @@ import {
 } from "typeorm";
 
 import { PaginatedEntity } from "./modules/database/models/paginated-entity.model.js";
+import type { PlaystashUser } from "./modules/users/playstash-user.entity.js";
 
 export const ApiOkResponsePaginated = <DataDto extends Type<unknown>>(
   dataDto: DataDto,
@@ -184,6 +185,8 @@ export interface FindOptions {
    * Filter for age restriction purposes.
    */
   filterByAge?: number;
+  /** Authenticated requester; omitted only for internal indexing/maintenance. */
+  requestingUser?: PlaystashUser;
 }
 
 export const DEFAULT_METADATA_OPTIONS: FindOptions = {

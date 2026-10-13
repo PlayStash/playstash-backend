@@ -31,6 +31,7 @@ import {
   toFindOptionsSelect,
 } from "../../globals.js";
 import { logPlaystashGame } from "../../logging.js";
+import { canAccessGame } from "../games/game-access.js";
 import { GamesService } from "../games/games.service.js";
 import { MediaService } from "../media/media.service.js";
 import { type RegisterUserDto } from "./models/register-user.dto.js";
@@ -113,7 +114,9 @@ export class UsersService implements OnApplicationBootstrap {
           "progresses.game",
           "progresses.game.metadata",
           "progresses.game.metadata.cover",
+          "progresses.game.allowed_users",
           "bookmarked_games",
+          "bookmarked_games.allowed_users",
         ];
       } else if (Array.isArray(options.loadRelations))
         relationPaths = options.loadRelations;
@@ -140,7 +143,10 @@ export class UsersService implements OnApplicationBootstrap {
           cause: error,
         });
       });
-    return this.filterDeletedContent(user);
+    return this.filterVisibleContent(
+      this.filterDeletedContent(user),
+      options.requestingUser,
+    );
   }
 
   /** Get user by username or throw an exception if not found */
@@ -152,7 +158,13 @@ export class UsersService implements OnApplicationBootstrap {
 
     if (options.loadRelations) {
       if (options.loadRelations === true) {
-        relationPaths = ["progresses", "progresses.game", "bookmarked_games"];
+        relationPaths = [
+          "progresses",
+          "progresses.game",
+          "progresses.game.allowed_users",
+          "bookmarked_games",
+          "bookmarked_games.allowed_users",
+        ];
       } else if (Array.isArray(options.loadRelations))
         relationPaths = options.loadRelations;
     }
@@ -180,7 +192,10 @@ export class UsersService implements OnApplicationBootstrap {
           },
         );
       });
-    return this.filterDeletedContent(user);
+    return this.filterVisibleContent(
+      this.filterDeletedContent(user),
+      options.requestingUser,
+    );
   }
 
   public async find(
@@ -196,6 +211,34 @@ export class UsersService implements OnApplicationBootstrap {
     };
 
     return this.userRepository.find(query);
+  }
+
+  private filterVisibleContent(
+    user: PlaystashUser,
+    requester?: PlaystashUser,
+  ): PlaystashUser {
+    if (!requester) return user;
+    user.bookmarked_games = user.bookmarked_games?.filter((game) =>
+      canAccessGame(game, requester),
+    );
+    user.progresses = user.progresses?.filter(
+      (progress) =>
+        !!progress.game &&
+        canAccessGame(progress.game, requester) &&
+        (!progress.game.access_restricted ||
+          requester.id === user.id ||
+          user.share_restricted_activity),
+    );
+    for (const game of [
+      ...(user.bookmarked_games ?? []),
+      ...(user.progresses ?? []).flatMap((progress) =>
+        progress.game ? [progress.game] : [],
+      ),
+    ]) {
+      game.allowed_user_ids = game.allowed_users?.map((allowed) => allowed.id);
+      delete game.allowed_users;
+    }
+    return user;
   }
 
   /** Register a new user */
@@ -388,6 +431,11 @@ export class UsersService implements OnApplicationBootstrap {
       user.background = image;
     }
 
+    if (dto.share_restricted_activity !== undefined)
+      user.share_restricted_activity = dto.share_restricted_activity;
+    if (dto.report_game_metrics !== undefined)
+      user.report_game_metrics = dto.report_game_metrics;
+
     return this.userRepository.save(user);
   }
 
@@ -510,14 +558,16 @@ export class UsersService implements OnApplicationBootstrap {
   public async bookmarkGame(userId: number, gameId: number) {
     const user = await this.findOneByUserIdOrFail(userId, {
       loadDeletedEntities: false,
-      loadRelations: ["bookmarked_games"],
+      loadRelations: ["bookmarked_games", "bookmarked_games.allowed_users"],
     });
     if ((user.bookmarked_games ?? []).some((game) => game.id === gameId)) {
-      return user;
+      return this.filterVisibleContent(user, user);
     }
 
     const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
       loadDeletedEntities: false,
+      requestingUser: user,
+      filterByAge: await this.findUserAgeByUsername(user.username),
     });
 
     await this.userRepository
@@ -534,14 +584,14 @@ export class UsersService implements OnApplicationBootstrap {
       user: user.username,
       game: logPlaystashGame(game),
     });
-    return user;
+    return this.filterVisibleContent(user, user);
   }
 
   /** Unbookmarks a game with the specified ID from the given user. */
   public async unbookmarkGame(userId: number, gameId: number) {
     const user = await this.findOneByUserIdOrFail(userId, {
       loadDeletedEntities: false,
-      loadRelations: ["bookmarked_games"],
+      loadRelations: ["bookmarked_games", "bookmarked_games.allowed_users"],
     });
 
     // The in-memory `bookmarked_games` list omits soft-deleted games (they are
@@ -558,7 +608,7 @@ export class UsersService implements OnApplicationBootstrap {
       withDeleted: true,
     });
     if (!userWithBookmark) {
-      return user;
+      return this.filterVisibleContent(user, user);
     }
 
     const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
@@ -581,7 +631,7 @@ export class UsersService implements OnApplicationBootstrap {
       game: logPlaystashGame(game),
     });
 
-    return user;
+    return this.filterVisibleContent(user, user);
   }
 
   public calculateAge(birthDate: Date) {

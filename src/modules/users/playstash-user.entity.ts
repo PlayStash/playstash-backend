@@ -100,6 +100,22 @@ export class PlaystashUser extends DatabaseEntity {
   })
   activated!: boolean;
 
+  @Column({ default: false })
+  @ApiPropertyOptional({
+    description:
+      "Share activity/progress for restricted games with other users who can access them",
+    default: false,
+  })
+  share_restricted_activity!: boolean;
+
+  @Column({ default: true })
+  @ApiPropertyOptional({
+    description:
+      "Allow this client to report download/install/uninstall/session events",
+    default: true,
+  })
+  report_game_metrics!: boolean;
+
   @OneToMany(() => Progress, (progress) => progress.user)
   @ApiPropertyOptional({
     description: "progresses of the user",

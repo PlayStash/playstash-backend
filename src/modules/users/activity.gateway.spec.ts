@@ -1,211 +1,184 @@
+import { UnauthorizedException } from "@nestjs/common";
 import { ActivityGateway } from "./activity.gateway.js";
 import { ActivityState } from "./models/activity-state.enum.js";
+import { Role } from "./models/role.enum.js";
 
-vi.mock("../../configuration.js", () => ({
-  __esModule: true,
-  default: {
-    SERVER: { ONLINE_ACTIVITIES_DISABLED: false },
-  },
-}));
-
-vi.mock("../../logging.js", () => ({
-  __esModule: true,
-  default: {
-    log: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  },
-  logPlaystashGame: vi.fn(),
-  logPlaystashUser: vi.fn(),
-  logMedia: vi.fn(),
-  logMetadata: vi.fn(),
-  logMetadataProvider: vi.fn(),
-  logProgress: vi.fn(),
-}));
-
-describe("ActivityGateway", () => {
+describe("activity privacy", () => {
   let gateway: ActivityGateway;
-  let mockUsersService: any;
-
+  let users: any;
+  let games: any;
+  const socket = (id: number) =>
+    ({
+      id: `socket-${id}`,
+      user: { id, username: `user${id}`, role: Role.USER },
+      emit: vi.fn(),
+    }) as any;
   beforeEach(() => {
-    mockUsersService = {
-      findOneByUserIdOrFail: vi
-        .fn()
-        .mockImplementation((id) =>
-          Promise.resolve({ id, username: `user${id}` }),
-        ),
+    users = {
+      findOneByUserIdOrFail: vi.fn(async (id) => ({
+        id,
+        username: `user${id}`,
+        role: Role.USER,
+        share_restricted_activity: false,
+      })),
+      findUserAgeByUsername: vi.fn(async () => undefined),
     };
-
-    gateway = new ActivityGateway(mockUsersService);
-    gateway.server = { emit: vi.fn() } as any;
+    games = {
+      findOneByGameIdOrFail: vi.fn(async () => ({
+        id: 10,
+        access_restricted: false,
+      })),
+    };
+    gateway = new ActivityGateway(users, games);
+    gateway.server = { sockets: { sockets: new Map() } } as any;
   });
-
-  afterEach(() => vi.restoreAllMocks());
-
-  // ─── handleConnection ──────────────────────────────────────────────
-
-  describe("handleConnection", () => {
-    it("should emit current activities to connected client", () => {
-      const client = { id: "socket-1", emit: vi.fn() } as any;
-      gateway.handleConnection(client);
-      expect(client.emit).toHaveBeenCalledWith("activities", []);
-    });
-
-    it("should include existing activities when a new client connects", async () => {
-      // Set up an existing activity
-      const existingClient = { id: "socket-0" } as any;
-      (existingClient as any).user = { id: 1 };
-      await gateway.setActivity(existingClient, {
-        state: ActivityState.ONLINE,
-      } as any);
-
-      const newClient = { id: "socket-1", emit: vi.fn() } as any;
-      gateway.handleConnection(newClient);
-      expect(newClient.emit).toHaveBeenCalledWith(
-        "activities",
-        expect.arrayContaining([
-          expect.objectContaining({ user_id: 1, state: ActivityState.ONLINE }),
-        ]),
-      );
-    });
+  it("sends no activity on an unauthenticated connection", () => {
+    const client = { id: "new", emit: vi.fn() } as any;
+    gateway.handleConnection(client);
+    expect(client.emit).not.toHaveBeenCalled();
   });
-
-  // ─── handleDisconnect ──────────────────────────────────────────────
-
-  describe("handleDisconnect", () => {
-    it("should remove activities for the disconnected client", async () => {
-      const client = { id: "socket-1" } as any;
-      (client as any).user = { id: 42 };
-      await gateway.setActivity(client, {
-        state: ActivityState.PLAYING,
-        game_id: 10,
-      } as any);
-
-      gateway.handleDisconnect(client);
-
-      // Activities should be empty after disconnect
-      const newClient = { id: "socket-2", emit: vi.fn() } as any;
-      gateway.handleConnection(newClient);
-      expect(newClient.emit).toHaveBeenCalledWith("activities", []);
-    });
-
-    it("should only remove activities matching the disconnected socket", async () => {
-      const client1 = { id: "socket-1" } as any;
-      (client1 as any).user = { id: 1 };
-      await gateway.setActivity(client1, {
-        state: ActivityState.ONLINE,
-      } as any);
-
-      const client2 = { id: "socket-2" } as any;
-      (client2 as any).user = { id: 2 };
-      await gateway.setActivity(client2, {
-        state: ActivityState.ONLINE,
-      } as any);
-
-      gateway.handleDisconnect(client1);
-
-      const checkClient = { id: "socket-3", emit: vi.fn() } as any;
-      gateway.handleConnection(checkClient);
-      const activities = checkClient.emit.mock.calls[0][1];
-      expect(activities).toHaveLength(1);
-      expect(activities[0].user_id).toBe(2);
-    });
+  it("requires authentication for activity messages", async () => {
+    const client = { id: "new", emit: vi.fn() } as any;
+    await expect(gateway.getActivities(client)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    await expect(
+      gateway.setActivity(client, { state: ActivityState.ONLINE }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
-
-  // ─── setActivity ──────────────────────────────────────────────────
-
-  describe("setActivity", () => {
-    it("should set activity and broadcast to all clients", async () => {
-      const client = { id: "socket-1" } as any;
-      (client as any).user = { id: 5 };
-
-      await gateway.setActivity(client, {
+  it("shares public game activity only with authenticated sockets", async () => {
+    const owner = socket(1),
+      viewer = socket(2),
+      guest = { id: "guest", emit: vi.fn() } as any;
+    gateway.server.sockets.sockets.set(viewer.id, viewer);
+    gateway.server.sockets.sockets.set(guest.id, guest);
+    await gateway.setActivity(owner, {
+      state: ActivityState.PLAYING,
+      game_id: 10,
+    });
+    expect(viewer.emit).toHaveBeenCalledWith(
+      "activity",
+      expect.objectContaining({ user_id: 1, game_id: 10 }),
+    );
+    expect(guest.emit).not.toHaveBeenCalled();
+  });
+  it("hides restricted game activity until its owner opts in", async () => {
+    games.findOneByGameIdOrFail.mockResolvedValue({
+      id: 10,
+      access_restricted: true,
+    });
+    const owner = socket(1),
+      viewer = socket(2);
+    await gateway.setActivity(owner, {
+      state: ActivityState.PLAYING,
+      game_id: 10,
+    });
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenLastCalledWith("activities", [
+      expect.objectContaining({
         state: ActivityState.ONLINE,
-      } as any);
-
-      expect(gateway.server.emit).toHaveBeenCalledWith(
-        "activity",
-        expect.objectContaining({
-          user_id: 5,
-          socket_id: "socket-1",
-          state: ActivityState.ONLINE,
-        }),
-      );
+        game_id: undefined,
+      }),
+    ]);
+    users.findOneByUserIdOrFail.mockImplementation(async (id: number) => ({
+      id,
+      username: `user${id}`,
+      role: Role.USER,
+      share_restricted_activity: true,
+    }));
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenLastCalledWith("activities", [
+      expect.objectContaining({ state: ActivityState.PLAYING, game_id: 10 }),
+    ]);
+  });
+  it("rechecks rights when reading activities after revocation", async () => {
+    const owner = socket(1),
+      viewer = socket(2);
+    await gateway.setActivity(owner, {
+      state: ActivityState.PLAYING,
+      game_id: 10,
     });
-
-    it("should include game_id only for PLAYING state", async () => {
-      const client = { id: "socket-1" } as any;
-      (client as any).user = { id: 5 };
-
-      await gateway.setActivity(client, {
-        state: ActivityState.PLAYING,
-        game_id: 42,
-      } as any);
-
-      expect(gateway.server.emit).toHaveBeenCalledWith(
-        "activity",
-        expect.objectContaining({
-          state: ActivityState.PLAYING,
-          game_id: 42,
-        }),
-      );
+    games.findOneByGameIdOrFail.mockRejectedValue(new Error("access revoked"));
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenCalledWith("activities", [
+      expect.objectContaining({ game_id: undefined }),
+    ]);
+  });
+  it("clears game IDs outside PLAYING and removes disconnected activity", async () => {
+    const owner = socket(1),
+      viewer = socket(2);
+    await gateway.setActivity(owner, {
+      state: ActivityState.BUSY,
+      game_id: 10,
     });
-
-    it("should clear game_id for non-PLAYING states", async () => {
-      const client = { id: "socket-1" } as any;
-      (client as any).user = { id: 5 };
-
-      await gateway.setActivity(client, {
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenCalledWith("activities", [
+      expect.objectContaining({
         state: ActivityState.BUSY,
-        game_id: 42,
-      } as any);
-
-      expect(gateway.server.emit).toHaveBeenCalledWith(
-        "activity",
-        expect.objectContaining({
-          state: ActivityState.BUSY,
-          game_id: undefined,
-        }),
-      );
-    });
-
-    it("should overwrite activity for the same user", async () => {
-      const client = { id: "socket-1" } as any;
-      (client as any).user = { id: 5 };
-
-      await gateway.setActivity(client, {
-        state: ActivityState.ONLINE,
-      } as any);
-
-      await gateway.setActivity(client, {
-        state: ActivityState.BUSY,
-      } as any);
-
-      const checkClient = { id: "socket-2", emit: vi.fn() } as any;
-      gateway.handleConnection(checkClient);
-      const activities = checkClient.emit.mock.calls[0][1];
-      expect(activities).toHaveLength(1);
-      expect(activities[0].state).toBe(ActivityState.BUSY);
-    });
+        game_id: undefined,
+      }),
+    ]);
+    gateway.handleDisconnect(owner);
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenLastCalledWith("activities", []);
   });
-
-  // ─── getActivities ────────────────────────────────────────────────
-
-  describe("getActivities", () => {
-    it("should emit all activities to the requesting client", async () => {
-      const client1 = { id: "socket-1" } as any;
-      (client1 as any).user = { id: 1 };
-      await gateway.setActivity(client1, {
-        state: ActivityState.ONLINE,
-      } as any);
-
-      const requestClient = { id: "socket-2", emit: vi.fn() } as any;
-      gateway.getActivities(requestClient);
-      expect(requestClient.emit).toHaveBeenCalledWith(
-        "activities",
-        expect.arrayContaining([expect.objectContaining({ user_id: 1 })]),
-      );
+  it("removes invisible users from other activity lists while retaining their own status", async () => {
+    const owner = socket(1),
+      viewer = socket(2);
+    gateway.server.sockets.sockets.set(viewer.id, viewer);
+    await gateway.setActivity(owner, { state: ActivityState.INVISIBLE });
+    expect(viewer.emit).toHaveBeenCalledWith("remove-activity", { user_id: 1 });
+    await gateway.getActivities(viewer);
+    expect(viewer.emit).toHaveBeenLastCalledWith("activities", []);
+    await gateway.getActivities(owner);
+    expect(owner.emit).toHaveBeenLastCalledWith("activities", [
+      expect.objectContaining({ state: ActivityState.INVISIBLE }),
+    ]);
+  });
+  it("delivers room messages only to authenticated subscribers and directs DMs only to their participants", async () => {
+    const owner = socket(1),
+      viewer = socket(2),
+      unjoined = socket(3);
+    for (const client of [owner, viewer, unjoined])
+      gateway.server.sockets.sockets.set(client.id, client);
+    await gateway.chatHistory(viewer, { room: "lobby" });
+    const sent = await gateway.chatSend(owner, { text: "hello" });
+    expect(viewer.emit).toHaveBeenCalledWith("chat-message", sent.data);
+    expect(unjoined.emit).not.toHaveBeenCalled();
+    await gateway.chatLeave(viewer, { room: "lobby" });
+    viewer.emit.mockClear();
+    await gateway.chatSend(owner, { text: "no subscription" });
+    expect(viewer.emit).not.toHaveBeenCalled();
+    const direct = await gateway.chatSend(owner, {
+      recipient_user_id: 2,
+      text: "direct",
     });
+    expect(viewer.emit).toHaveBeenCalledWith("chat-message", direct.data);
+    expect(unjoined.emit).not.toHaveBeenCalled();
+  });
+  it("blocks revoked game-room subscribers and disabled users", async () => {
+    const owner = socket(1),
+      viewer = socket(2);
+    gateway.server.sockets.sockets.set(viewer.id, viewer);
+    await gateway.chatHistory(viewer, { room: "game:10" });
+    games.findOneByGameIdOrFail.mockImplementation(
+      async (_id: number, options: { requestingUser: { id: number } }) => {
+        if (options.requestingUser.id === 2) throw new Error("revoked");
+        return { id: 10 };
+      },
+    );
+    await gateway.chatSend(owner, { room: "game:10", text: "secret" });
+    expect(viewer.emit).not.toHaveBeenCalled();
+    users.findOneByUserIdOrFail.mockResolvedValue({
+      id: 1,
+      role: Role.USER,
+      activated: false,
+    });
+    await expect(
+      gateway.chatSend(owner, { text: "disabled" }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      gateway.chatHistory({ id: "guest" } as any, {}),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

@@ -5,8 +5,8 @@ import type { Mock, Mocked } from "vitest";
 import configuration from "../../configuration.js";
 import { OtpService } from "../otp/otp.service.js";
 import { Progress } from "../progresses/progress.entity.js";
-import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
 import { GamesController } from "./games.controller.js";
@@ -88,6 +88,9 @@ describe("GamesController", () => {
 
     usersService = {
       findUserAgeByUsername: vi.fn().mockResolvedValue(undefined),
+      findOneByUserIdOrFail: vi
+        .fn()
+        .mockResolvedValue({ share_restricted_activity: false }),
     } as any;
 
     otpService = {
@@ -107,6 +110,71 @@ describe("GamesController", () => {
   });
 
   describe("findGames", () => {
+    it("protects restricted activity before filtering, including arbitrary filter expressions", async () => {
+      (nestjsPaginate.paginate as Mock).mockResolvedValue({
+        data: [],
+        meta: {},
+        links: {},
+      });
+      await controller.findGames({ user: createMockUser() }, {
+        filterExpression:
+          "progresses.user.id=$eq:2 AND progresses.state=$eq:PLAYING",
+        path: "api/games",
+      } as any);
+      const options = (nestjsPaginate.paginate as Mock).mock.calls[0][2];
+      expect(
+        options.where.every(
+          (branch: any) => branch.access_restricted === false,
+        ),
+      ).toBe(true);
+    });
+    it("does not reveal restricted games by filtering another user's unplayed state", async () => {
+      progressRepository.find.mockResolvedValue([]);
+      (nestjsPaginate.paginate as Mock).mockResolvedValue({
+        data: [],
+        meta: {},
+        links: {},
+      });
+      await controller.findGames({ user: createMockUser() }, {
+        filter: {
+          "progresses.user.id": "$eq:2",
+          "progresses.state": "$eq:UNPLAYED",
+        },
+        path: "api/games",
+      } as any);
+      const options = (nestjsPaginate.paginate as Mock).mock.calls[0][2];
+      expect(
+        options.where.every(
+          (branch: any) => branch.access_restricted === false,
+        ),
+      ).toBe(true);
+    });
+    it("permits version folder prefixes and creation date filters on the server", async () => {
+      (nestjsPaginate.paginate as Mock).mockResolvedValue({
+        data: [],
+        meta: {},
+        links: {},
+      });
+      const filter = {
+        "versions.file_path": "$sw:/files/RPG/",
+        created_at: "$gte:2026-10-01T00:00:00.000Z",
+      };
+      await controller.findGames({ user: createMockUser() }, {
+        filter,
+        path: "api/games",
+      } as any);
+      expect(nestjsPaginate.paginate).toHaveBeenCalledWith(
+        expect.objectContaining({ filter }),
+        gamesRepository,
+        expect.objectContaining({
+          relations: expect.objectContaining({ versions: true }),
+          filterableColumns: expect.objectContaining({
+            "versions.file_path": true,
+            created_at: true,
+          }),
+        }),
+      );
+    });
     it("should resolve metadata tag filters to game ids before paginate", async () => {
       const metadataQueryBuilder = {
         select: vi.fn().mockReturnThis(),
@@ -328,6 +396,7 @@ describe("GamesController", () => {
       expect(gamesService.findOneByGameIdOrFail).toHaveBeenCalledWith(5, {
         loadDeletedEntities: true,
         filterByAge: undefined,
+        requestingUser: createMockUser(),
       });
     });
   });
@@ -360,6 +429,7 @@ describe("GamesController", () => {
         1024,
         "bytes=0-999",
         undefined,
+        mockUser,
       );
     });
   });

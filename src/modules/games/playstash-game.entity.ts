@@ -22,6 +22,29 @@ import { sortGameVersions } from "./version-selection.util.js";
 
 @Entity()
 export class PlaystashGame extends DatabaseEntity {
+  @Column({ default: false })
+  @ApiPropertyOptional({
+    description:
+      "Only administrators and explicitly allowed users can access this game",
+    default: false,
+  })
+  access_restricted!: boolean;
+
+  @ManyToMany(() => PlaystashUser)
+  @JoinTable({
+    name: "game_access",
+    joinColumn: { name: "game_id", referencedColumnName: "id" },
+    inverseJoinColumn: { name: "user_id", referencedColumnName: "id" },
+  })
+  allowed_users?: Relation<PlaystashUser[]>;
+
+  @ApiPropertyOptional({
+    description: "IDs of users explicitly allowed to access a restricted game",
+    type: Number,
+    isArray: true,
+  })
+  allowed_user_ids?: number[];
+
   @Index({ unique: true })
   @Column({ unique: true })
   @ApiPropertyOptional({

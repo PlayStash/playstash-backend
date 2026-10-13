@@ -8,8 +8,8 @@ import type { Mocked } from "vitest";
 import configuration from "../../configuration.js";
 import { GamesService } from "../games/games.service.js";
 import { MediaService } from "../media/media.service.js";
-import { PlaystashUser } from "./playstash-user.entity.js";
 import { Role } from "./models/role.enum.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { UsersService } from "./users.service.js";
 
 describe("UsersService", () => {
@@ -131,7 +131,9 @@ describe("UsersService", () => {
       expect(userRepository.findOneOrFail).toHaveBeenCalledWith(
         expect.objectContaining({
           relations: expect.objectContaining({
-            progresses: { game: { metadata: { cover: true } } },
+            progresses: {
+              game: { metadata: { cover: true }, allowed_users: true },
+            },
           }),
         }),
       );

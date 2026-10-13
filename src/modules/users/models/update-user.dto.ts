@@ -17,6 +17,23 @@ import { IsDateStringBeforeNow } from "../../../validators/is-date-string-before
 import { Role } from "./role.enum.js";
 
 export class UpdateUserDto {
+  @IsBoolean()
+  @IsOptional()
+  @ApiPropertyOptional({
+    description: "Allow clients to report lifecycle events",
+    default: true,
+  })
+  report_game_metrics?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  @ApiPropertyOptional({
+    description:
+      "Share restricted-game activity/progress with other permitted users",
+    default: false,
+  })
+  share_restricted_activity?: boolean;
+
   @Matches(/^\w+$/, {
     message:
       "Usernames can only contain latin letters, numbers and underscores",

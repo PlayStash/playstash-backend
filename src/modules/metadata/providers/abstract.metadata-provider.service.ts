@@ -78,6 +78,9 @@ export abstract class MetadataProvider
   @Min(0)
   public request_interval_ms = 0;
 
+  /** Providers with an in-process response cache can clear it for a forced recache. */
+  public clearCache(): void {}
+
   public getDto(): MetadataProviderDto {
     return {
       slug: this.slug,

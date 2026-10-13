@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
+import fsExtra from "fs-extra";
 import { Repository } from "typeorm";
 import configuration from "../../configuration.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
@@ -55,6 +56,7 @@ vi.mock("fs-extra", async (importOriginal) => {
     pathExists: vi.fn().mockResolvedValue(true),
     remove: vi.fn().mockResolvedValue(undefined),
     writeFile: vi.fn().mockResolvedValue(undefined),
+    move: vi.fn().mockResolvedValue(undefined),
   };
   return {
     ...actual,
@@ -65,6 +67,18 @@ vi.mock("fs-extra", async (importOriginal) => {
 
 import fileTypeChecker from "file-type-checker";
 import type { Mock, Mocked } from "vitest";
+
+// The upload is streamed to disk, so file type detection reads the header of the
+// temporary file instead of an in-memory buffer.
+vi.mock("../../uploads/streamed-upload.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    readFileHeader: vi
+      .fn()
+      .mockResolvedValue(Buffer.from("fake image content")),
+  };
+});
 
 describe("MediaService", () => {
   let service: MediaService;
@@ -100,6 +114,41 @@ describe("MediaService", () => {
   });
 
   describe("isAvailable", () => {
+    it("denies private game images to an unlisted user", async () => {
+      (mediaRepository as any).manager = {
+        getRepository: vi.fn(() => ({
+          find: vi.fn(async () => [
+            { access_restricted: true, allowed_users: [{ id: 9 }] },
+          ]),
+        })),
+      };
+      usersService.findUserAgeByUsername = vi.fn(async () => undefined);
+      await expect(
+        service.assertMediaAccess(1, {
+          id: 7,
+          username: "viewer",
+          role: 1,
+        } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+    it("allows a shared image when at least one associated game is visible", async () => {
+      (mediaRepository as any).manager = {
+        getRepository: vi.fn(() => ({
+          find: vi.fn(async () => [
+            { access_restricted: true },
+            { access_restricted: false },
+          ]),
+        })),
+      };
+      usersService.findUserAgeByUsername = vi.fn(async () => undefined);
+      await expect(
+        service.assertMediaAccess(1, {
+          id: 7,
+          username: "viewer",
+          role: 1,
+        } as any),
+      ).resolves.toBeUndefined();
+    });
     it("should return true when media exists", async () => {
       mediaRepository.findOneByOrFail.mockResolvedValue(createMockMedia());
       const result = await service.isAvailable(1);
@@ -159,7 +208,7 @@ describe("MediaService", () => {
       );
 
       const file = {
-        buffer: Buffer.from("fake image content"),
+        path: "/media/.playstash-upload-temp",
         originalname: "test.jpg",
         mimetype: "image/jpeg",
         size: 1024,
@@ -180,7 +229,7 @@ describe("MediaService", () => {
       });
 
       const file = {
-        buffer: Buffer.from("fake exe content"),
+        path: "/media/.playstash-upload-temp",
         originalname: "test.exe",
         mimetype: "application/octet-stream",
         size: 1024,
@@ -189,6 +238,7 @@ describe("MediaService", () => {
       await expect(service.upload(file, "testuser")).rejects.toThrow(
         BadRequestException,
       );
+      expect(vi.mocked(fsExtra.remove)).toHaveBeenCalledWith(file.path);
     });
 
     it("should throw BadRequestException when file type cannot be detected", async () => {
@@ -201,7 +251,7 @@ describe("MediaService", () => {
       });
 
       const file = {
-        buffer: Buffer.from("unknown content"),
+        path: "/media/.playstash-upload-temp",
         originalname: "unknown",
         mimetype: "application/octet-stream",
         size: 1024,
@@ -210,6 +260,40 @@ describe("MediaService", () => {
       await expect(service.upload(file, "testuser")).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it("should move the streamed upload into the media volume", async () => {
+      const mockUser = new PlaystashUser();
+      usersService.findOneByUsernameOrFail.mockResolvedValue(mockUser);
+
+      (fileTypeChecker.detectFile as Mock).mockReturnValue({
+        extension: "jpg",
+        mimeType: "image/jpeg",
+      });
+
+      mediaRepository.save.mockImplementation(async (media) => media as any);
+
+      const config = configuration as any;
+      const previousMockFiles = config.TESTING.MOCK_FILES;
+      config.TESTING.MOCK_FILES = false;
+      try {
+        const file = {
+          path: "/media/.playstash-upload-temp",
+          originalname: "test.jpg",
+          mimetype: "image/jpeg",
+          size: 1024,
+        } as Express.Multer.File;
+
+        await service.upload(file, "testuser");
+
+        expect(vi.mocked(fsExtra.move)).toHaveBeenCalledWith(
+          file.path,
+          expect.stringMatching(/^\/media\/.*\.jpg$/),
+          { overwrite: true },
+        );
+      } finally {
+        config.TESTING.MOCK_FILES = previousMockFiles;
+      }
     });
   });
 
@@ -241,7 +325,7 @@ describe("MediaService", () => {
           arrayBuffer: async () => new ArrayBuffer(8),
         }),
       );
-      vi.spyOn(service as any, "validate").mockResolvedValue({
+      (fileTypeChecker.detectFile as Mock).mockReturnValue({
         mimeType: "image/png",
         extension: "png",
       });

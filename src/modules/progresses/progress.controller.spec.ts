@@ -1,7 +1,7 @@
 import { Repository } from "typeorm";
 import type { Mocked } from "vitest";
-import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { State } from "./models/state.enum.js";
 import { ProgressController } from "./progress.controller.js";
@@ -97,6 +97,7 @@ describe("ProgressController", () => {
         42,
         { state: State.COMPLETED, minutes_played: 100 },
         "testuser",
+        createMockUser(),
       );
     });
   });
@@ -112,7 +113,13 @@ describe("ProgressController", () => {
           { user: createMockUser() },
         );
       expect(result.minutes_played).toBe(61);
-      expect(progressService.increment).toHaveBeenCalledWith(1, 42, "testuser");
+      expect(progressService.increment).toHaveBeenCalledWith(
+        1,
+        42,
+        "testuser",
+        undefined,
+        createMockUser(),
+      );
     });
   });
 
@@ -132,6 +139,7 @@ describe("ProgressController", () => {
         42,
         "testuser",
         10,
+        createMockUser(),
       );
     });
   });
@@ -150,6 +158,7 @@ describe("ProgressController", () => {
         1,
         42,
         "testuser",
+        createMockUser(),
       );
     });
   });

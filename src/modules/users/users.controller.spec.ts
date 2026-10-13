@@ -1,7 +1,7 @@
 import type { Mocked } from "vitest";
 import { ApiKeyService } from "./api-key.service.js";
-import { PlaystashUser } from "./playstash-user.entity.js";
 import { Role } from "./models/role.enum.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 
@@ -78,7 +78,11 @@ describe("UsersController", () => {
         { user: requestUser },
       );
       expect(result).toEqual(mockUser);
-      expect(usersService.findOneByUserIdOrFail).toHaveBeenCalledWith(1);
+      expect(usersService.findOneByUserIdOrFail).toHaveBeenCalledWith(1, {
+        loadDeletedEntities: true,
+        loadRelations: true,
+        requestingUser: requestUser,
+      });
     });
 
     it("should load API key when requesting own user details", async () => {
@@ -112,7 +116,11 @@ describe("UsersController", () => {
       apiKeyService.findApiKeyOrFail.mockResolvedValue("api-key-5");
 
       const result = await controller.getUsersMe({ user: requestUser });
-      expect(usersService.findOneByUserIdOrFail).toHaveBeenCalledWith(5);
+      expect(usersService.findOneByUserIdOrFail).toHaveBeenCalledWith(5, {
+        loadDeletedEntities: true,
+        loadRelations: true,
+        requestingUser: requestUser,
+      });
       expect(result.api_key).toBe("api-key-5");
     });
   });

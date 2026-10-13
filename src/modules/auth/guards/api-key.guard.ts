@@ -48,7 +48,13 @@ export class ApiKeyGuard implements CanActivate {
     const isWebsocketProtocol = context.getType<"ws" | "http">() === "ws";
 
     const apiKey = isWebsocketProtocol
-      ? context.switchToWs().getClient<Socket>().handshake.headers["x-api-key"]
+      ? (context.switchToWs().getClient<Socket>().handshake.headers[
+          "x-api-key"
+        ] ??
+        (typeof context.switchToWs().getClient<Socket>().handshake.auth
+          ?.api_key === "string"
+          ? context.switchToWs().getClient<Socket>().handshake.auth.api_key
+          : undefined))
       : context.switchToHttp().getRequest<Request>().headers["x-api-key"];
 
     if (!apiKey) {
@@ -57,6 +63,7 @@ export class ApiKeyGuard implements CanActivate {
           status: "error",
           message: "Missing X-Api-Key Header.",
         });
+        return false;
       }
       return true;
     }

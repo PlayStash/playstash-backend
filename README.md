@@ -4,15 +4,23 @@ PlayStash is a self-hosted gaming platform for organizing and sharing legally ob
 
 Find the source, releases and issue tracker in the [PlayStash backend repository](https://github.com/PlayStash/playstash-backend). See [INSTALL.md](INSTALL.md) for local development setup and the Docker Compose examples for a fresh installation.
 
+See [Game packages](docs/packages.md) for unarchived game folders, optional installation manifests, extras, and separate mod/DLC/patch archives.
+
+Additional guides cover [folder tags](docs/folder-tags.md), [requests and reviews](docs/feedback.md), [chat](docs/chat.md), [game metrics](docs/metrics.md), [library options](docs/library-options.md), and [administrator logs](docs/admin-logs.md).
+
+See the [upstream issue status](docs/upstream-issue-status.md) for implemented requests and the remaining achievement format/adapter clarification.
+
 PlayStash features do not require a paid subscription.
 
 ## GitHub Actions
 
-The repository uses `main` for stable releases and `dev` for development builds. The `hotfix` and `early-access` release branches remain available.
+The repository uses `main` for stable releases and `dev` for development builds.
 
 Workflow jobs are disabled by default. To enable them deliberately, set the repository Actions variable `PLAYSTASH_RUN_WORKFLOWS` to the exact value `true` under Settings → Secrets and variables → Actions → Variables. An unset variable, `false`, or any other value keeps every job disabled. Existing branch and project conditions still apply after enabling workflows.
 
-Optional integrations use your own accounts. For SonarCloud, set the repository variables `PLAYSTASH_SONAR_PROJECT_KEY` and `PLAYSTASH_SONAR_ORGANIZATION`, and add the `SONAR_TOKEN` secret; the scan job stays disabled when either variable is unset. For Discord release notices, set `PLAYSTASH_DISCORD_NOTIFICATIONS` to `true` and add the `DISCORD_RELEASE_BOT_WEBHOOK` secret. Notices stay disabled by default. Container publishing requires your own Docker Hub account and the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.
+Enabling workflows builds and checks each push. Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.0` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
+
+For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 
 ## Attribution and license
 

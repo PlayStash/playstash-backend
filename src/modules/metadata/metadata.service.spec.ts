@@ -69,6 +69,7 @@ describe("MetadataService", () => {
 
   beforeEach(() => {
     mockGamesService = {
+      find: vi.fn().mockResolvedValue([]),
       findOneByGameIdOrFail: vi.fn(),
       save: vi.fn().mockImplementation((g) => Promise.resolve(g)),
       generateSortTitle: vi.fn().mockReturnValue("sort-title"),
@@ -172,6 +173,108 @@ describe("MetadataService", () => {
   });
 
   // ─── search ────────────────────────────────────────────────────────
+
+  describe("recacheAll", () => {
+    it("queues one force batch, skips NC files, and rejects repeated batches", async () => {
+      vi.spyOn(service as any, "processQueue").mockResolvedValue(undefined);
+      const game = { id: 1, file_path: "/files/game.zip", versions: [] };
+      mockGamesService.find.mockResolvedValue([
+        game,
+        { id: 2, versions: [{ file_path: "/files/Other(NC).zip" }] },
+      ]);
+      expect(await service.recacheAll()).toEqual({
+        queued_games: 1,
+        processing: true,
+      });
+      expect((service as any).forcedMetadataJobs).toEqual(new Set([1]));
+      expect((service as any).metadataJobs.get(1)).toBe(game);
+      await expect(service.recacheAll()).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+    it("bypasses provider TTL, retains mapping priority and user overrides, and skips disabled providers", async () => {
+      const clearCache = vi.fn();
+      const provider = createMockProvider({ clearCache });
+      service.registerProvider(provider);
+      service.registerProvider(
+        createMockProvider({ slug: "disabled", priority: 99, enabled: false }),
+      );
+      const userMetadata = {
+        archive_password: "personal",
+        launch_profiles: [],
+      };
+      const game = {
+        id: 1,
+        file_path: "/files/game.zip",
+        provider_metadata: [
+          {
+            provider_slug: provider.slug,
+            provider_data_id: "chosen-id",
+            provider_priority: 77,
+            updated_at: new Date(),
+          },
+        ],
+        user_metadata: userMetadata,
+        versions: [],
+      } as any;
+      mockGamesService.find.mockResolvedValue([game]);
+      mockGamesService.findOneByGameIdOrFail.mockResolvedValue(game);
+      const map = vi.spyOn(service, "map").mockResolvedValue(game);
+      const merge = vi.spyOn(service, "merge").mockResolvedValue(game);
+      await service.recacheAll();
+      await vi.waitFor(() =>
+        expect((service as any).recacheActive).toBe(false),
+      );
+      expect(map).toHaveBeenCalledExactlyOnceWith(
+        1,
+        provider.slug,
+        "chosen-id",
+        77,
+      );
+      expect(merge).toHaveBeenCalledExactlyOnceWith(1);
+      expect(clearCache).toHaveBeenCalledOnce();
+      expect(game.user_metadata).toBe(userMetadata);
+    });
+    it("preserves a forced job enqueued while the same normal job is already running", async () => {
+      const game = { id: 1, file_path: "/files/game.zip" } as any;
+      mockGamesService.find.mockResolvedValue([game]);
+      mockGamesService.findOneByGameIdOrFail.mockResolvedValue(game);
+      let finish!: () => void;
+      const update = vi
+        .spyOn(service as any, "updateMetadata")
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        )
+        .mockResolvedValue(undefined);
+      await service.addUpdateMetadataJob(game);
+      await service.recacheAll();
+      finish();
+      await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+      expect(update).toHaveBeenNthCalledWith(1, game, false);
+      expect(update).toHaveBeenNthCalledWith(2, game, true);
+    });
+    it("releases an empty or failed batch and continues to respect NC in forced processing", async () => {
+      expect(await service.recacheAll()).toEqual({
+        queued_games: 0,
+        processing: false,
+      });
+      mockGamesService.find.mockRejectedValueOnce(new Error("DB unavailable"));
+      await expect(service.recacheAll()).rejects.toThrow("DB unavailable");
+      expect(await service.recacheAll()).toEqual({
+        queued_games: 0,
+        processing: false,
+      });
+      const merge = vi.spyOn(service, "merge");
+      await (service as any).updateMetadata(
+        { id: 1, file_path: "/files/game(NC).zip" },
+        true,
+      );
+      expect(merge).not.toHaveBeenCalled();
+    });
+  });
 
   describe("search", () => {
     it("should delegate search to the provider", async () => {

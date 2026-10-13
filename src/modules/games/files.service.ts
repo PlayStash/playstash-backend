@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  Optional,
   StreamableFile,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -12,17 +14,27 @@ import type { Stats } from "fs-extra";
 import fsExtra from "fs-extra";
 import lodash from "lodash";
 import node7z from "node-7z";
-import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { readdir as readDirectory, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path, { basename } from "node:path";
 import { type Readable } from "node:stream";
 import { from, lastValueFrom } from "rxjs";
 import { mergeMap } from "rxjs/operators";
 import filenameSanitizer from "sanitize-filename";
-import { Throttle } from "stream-throttle";
 import { IsNull, Not, Repository } from "typeorm";
 import unidecode from "unidecode";
-const { access, constants, createReadStream, pathExists, rm, stat, writeFile } =
-  fsExtra;
+const {
+  access,
+  constants,
+  createReadStream,
+  ensureDir,
+  move,
+  pathExists,
+  rm,
+  stat,
+} = fsExtra;
 const { debounce, toLower } = lodash;
 const { add, list } = node7z;
 
@@ -30,14 +42,27 @@ import { Cron, SchedulerRegistry } from "@nestjs/schedule";
 import configuration from "../../configuration.js";
 import globals, { toFindOptionsRelations } from "../../globals.js";
 import { logPlaystashGame } from "../../logging.js";
+import { discardStreamedUpload } from "../../uploads/streamed-upload.js";
 import { MetadataService } from "../metadata/metadata.service.js";
+import { ExternalNotificationsService } from "../notifications/external-notifications.service.js";
+import {
+  type DirectoryGame,
+  PACKAGE_MANIFEST,
+  scanDirectoryGames,
+  SIDECAR_DIRECTORIES,
+  snapshotGameDirectory,
+} from "../packages/package-manifest.js";
+import {
+  createDownloadRateProvider,
+  DynamicDownloadThrottle,
+} from "./download-bandwidth.js";
 import { GameVersion } from "./game-version.entity.js";
 import { GamesService } from "./games.service.js";
-import { PlaystashGame } from "./playstash-game.entity.js";
 import { type File } from "./models/file.model.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { GameType } from "./models/game-type.enum.js";
 import { type RangeHeader } from "./models/range-header.model.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 import {
   selectDefaultGameVersion,
   sortGameVersions,
@@ -54,12 +79,97 @@ export class FilesService implements OnApplicationBootstrap {
     await this.checkIntegrity();
   }, 5000);
 
+  /** True while a full filesystem scan is running, so the interval scan never
+   *  starts a second one over the same volume. */
+  private fullIndexInProgress = false;
+  private readonly directoryGames = new Map<string, DirectoryGame>();
+  private readonly archiveJobs = new Map<string, Promise<void>>();
+  private readonly runDebouncedDirectoryIndex = debounce(
+    () => this.indexAllFiles(),
+    2000,
+  );
+
+  private async onStorageChanged(
+    filename: string,
+    stats?: Stats,
+    added = false,
+  ) {
+    try {
+      const relative = path.relative(configuration.VOLUMES.FILES, filename);
+      if (
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative)
+      )
+        return;
+      const segments = relative.split(path.sep);
+      const sidecarIndex = segments.findIndex((segment) =>
+        SIDECAR_DIRECTORIES.has(segment.toLowerCase()),
+      );
+      if (sidecarIndex >= 0) {
+        if (added && segments[sidecarIndex].toLowerCase() === "extras") {
+          const root = path.join(
+            configuration.VOLUMES.FILES,
+            ...segments.slice(0, sidecarIndex),
+          );
+          const games = await this.gamesService.find({
+            loadDeletedEntities: false,
+            select: [
+              "id",
+              "title",
+              "version",
+              "file_path",
+              "access_restricted",
+            ],
+          });
+          for (const game of games) {
+            if (
+              game.file_path === root ||
+              (game.file_path && path.dirname(game.file_path) === root)
+            )
+              this.notifications?.publish(
+                "game.extra.added",
+                game,
+                path.basename(filename),
+              );
+          }
+        }
+        return;
+      }
+      const knownDirectory = [...this.directoryGames.keys()].some(
+        (directory) =>
+          filename === directory ||
+          filename.startsWith(`${directory}${path.sep}`),
+      );
+      if (
+        knownDirectory ||
+        path.basename(filename) === PACKAGE_MANIFEST ||
+        /^(?:setup|install)(?:[._ -].*)?\.(?:exe|sh)$/i.test(
+          path.basename(filename),
+        )
+      ) {
+        this.runDebouncedDirectoryIndex();
+        return;
+      }
+      if (!configuration.GAMES.SEARCH_RECURSIVE && segments.length > 1) return;
+      await this.index(filename, stats);
+    } catch (error) {
+      this.logger.warn({
+        message: "Could not process changed library file.",
+        filename,
+        error,
+      });
+    }
+  }
+
   constructor(
     private readonly gamesService: GamesService,
     private readonly metadataService: MetadataService,
     private readonly schedulerRegistry: SchedulerRegistry,
     @InjectRepository(GameVersion)
     private readonly gameVersionRepository: Repository<GameVersion>,
+    @Optional()
+    private readonly notifications?: ExternalNotificationsService,
   ) {}
 
   /** Initializes the file watcher and starts the initial indexing. */
@@ -76,7 +186,7 @@ export class FilesService implements OnApplicationBootstrap {
     const { watch } = await import("chokidar");
 
     watch(configuration.VOLUMES.FILES, {
-      depth: configuration.GAMES.SEARCH_RECURSIVE ? undefined : 0,
+      depth: undefined,
       ignorePermissionErrors: true,
       ignoreInitial: true,
       followSymlinks: true,
@@ -84,9 +194,9 @@ export class FilesService implements OnApplicationBootstrap {
       awaitWriteFinish: true,
       usePolling: configuration.GAMES.INDEX_USE_POLLING,
     })
-      .on("add", (path, stats) => this.index(path, stats))
-      .on("change", (path, stats) => this.index(path, stats))
-      .on("unlink", (path, stats) => this.index(path, stats))
+      .on("add", (path, stats) => this.onStorageChanged(path, stats, true))
+      .on("change", (path, stats) => this.onStorageChanged(path, stats))
+      .on("unlink", (path, stats) => this.onStorageChanged(path, stats))
       .on("error", (error) =>
         this.logger.error({ message: "Error in Filewatcher.", error }),
       );
@@ -101,8 +211,40 @@ export class FilesService implements OnApplicationBootstrap {
         configuration.TESTING.MOCK_FILES,
     },
   )
+  /**
+   * Runs the interval scan, unless a full scan is still running.
+   *
+   * A scan can outlive its own interval on large libraries. Two scans running at
+   * the same time would each compare their own (older) file snapshot against
+   * the versions the other one just indexed, so the interval never starts a
+   * second scan. Files uploaded in the meantime are picked up by the watcher,
+   * and the running scan already covers the whole volume.
+   */
+  private async runScheduledIndex() {
+    if (this.fullIndexInProgress) {
+      this.logger.warn({
+        message: "Skipping scheduled file index.",
+        reason: "A full file index is still running.",
+      });
+      return;
+    }
+
+    await this.indexAllFiles();
+  }
+
   /** Scans the filesystem for all games and indexes them. */
   public async indexAllFiles() {
+    if (this.fullIndexInProgress) return;
+    this.fullIndexInProgress = true;
+    try {
+      await this.performFullIndex();
+    } finally {
+      this.fullIndexInProgress = false;
+    }
+  }
+
+  /** Walks the files volume, indexes every file found and verifies the result. */
+  private async performFullIndex() {
     const files = await this.readAllFiles();
     this.logger.log({
       message: "Starting full file index.",
@@ -128,6 +270,197 @@ export class FilesService implements OnApplicationBootstrap {
 
     this.runDebouncedIntegrityCheck.cancel();
     await this.checkIntegrity(files);
+    await this.mergeDuplicateGames();
+  }
+
+  /**
+   * Merges active games that resolve to the same normalized title and release
+   * year into one game, moving their files across as versions.
+   *
+   * Files whose titles only differ in casing, punctuation or a leading article
+   * used to be indexed as separate games (e.g. "The Roottrees are Dead" and
+   * "The Roottrees Are Dead", one Linux and one Windows build). This
+   * consolidates such games so they show up as a single game with multiple
+   * versions. It is a no-op once no duplicates remain.
+   *
+   * @returns The number of duplicate games that were merged away.
+   */
+  public async mergeDuplicateGames(): Promise<number> {
+    const games = await this.gamesService.find({
+      loadDeletedEntities: false,
+      loadRelations: false,
+      select: [
+        "id",
+        "title",
+        "sort_title",
+        "release_date",
+        "download_count",
+        "file_path",
+        "version",
+        "size",
+        "early_access",
+        "type",
+      ],
+    });
+
+    const buckets = new Map<string, PlaystashGame[]>();
+    for (const game of games) {
+      const sortTitle =
+        game.sort_title ||
+        this.gamesService.generateSortTitle(game.title ?? "");
+      if (!sortTitle) {
+        continue;
+      }
+      const key = `${sortTitle}::${this.getReleaseYearKey(game.release_date)}`;
+      const bucket = buckets.get(key);
+      if (bucket) {
+        bucket.push(game);
+      } else {
+        buckets.set(key, [game]);
+      }
+    }
+
+    let mergedCount = 0;
+    for (const bucket of buckets.values()) {
+      if (bucket.length > 1) {
+        mergedCount += await this.mergeGameBucket(bucket);
+      }
+    }
+
+    if (mergedCount > 0) {
+      this.logger.log({
+        message: "Merged duplicate games into single games.",
+        count: mergedCount,
+      });
+    }
+
+    return mergedCount;
+  }
+
+  /** Bucket key component for a game's release year. */
+  private getReleaseYearKey(releaseDate?: Date | null): string {
+    if (!releaseDate) {
+      return "none";
+    }
+    const year = new Date(releaseDate).getUTCFullYear();
+    return Number.isNaN(year) ? "none" : String(year);
+  }
+
+  /** Merges one bucket of same-title games into its oldest game. */
+  private async mergeGameBucket(bucket: PlaystashGame[]): Promise<number> {
+    const [canonical, ...duplicates] = [...bucket].sort((a, b) => a.id - b.id);
+    let mergedCount = 0;
+
+    for (const duplicate of duplicates) {
+      try {
+        await this.moveVersionsToGame(duplicate, canonical);
+
+        // `playstash_game.file_path` is NOT NULL + UNIQUE and survives soft
+        // deletes, so release it with a unique tombstone before deleting the
+        // merged-away game. Otherwise the surviving game could not claim the
+        // same path as its migrated version.
+        if (duplicate.file_path) {
+          await this.gamesService.save(
+            Object.assign(new PlaystashGame(), {
+              id: duplicate.id,
+              file_path: `merged:${duplicate.id}:${duplicate.file_path}`,
+            }),
+          );
+        }
+
+        canonical.download_count =
+          (canonical.download_count ?? 0) + (duplicate.download_count ?? 0);
+        await this.gamesService.save(
+          Object.assign(new PlaystashGame(), {
+            id: canonical.id,
+            download_count: canonical.download_count,
+          }),
+        );
+
+        await this.gamesService.delete(duplicate.id);
+        mergedCount++;
+
+        this.logger.log({
+          message: "Merged duplicate game into another game.",
+          canonicalGameId: canonical.id,
+          mergedGameId: duplicate.id,
+        });
+      } catch (error) {
+        this.logger.error({
+          message: "Failed to merge duplicate game.",
+          canonicalGameId: canonical.id,
+          mergedGameId: duplicate.id,
+          error,
+        });
+      }
+    }
+
+    if (mergedCount > 0) {
+      try {
+        await this.refreshDefaultVersion(canonical.id);
+      } catch (error) {
+        this.logger.error({
+          message: "Failed to refresh the default version after merging.",
+          canonicalGameId: canonical.id,
+          error,
+        });
+      }
+    }
+
+    return mergedCount;
+  }
+
+  /** Repoints every version of one game to another game. */
+  private async moveVersionsToGame(
+    from: PlaystashGame,
+    to: PlaystashGame,
+  ): Promise<void> {
+    const versions = await this.gameVersionRepository.find({
+      where: { game: { id: from.id } },
+      relationLoadStrategy: "query",
+      relations: toFindOptionsRelations<GameVersion>(["game"]),
+      withDeleted: false,
+    });
+
+    for (const version of versions) {
+      version.game = { id: to.id } as PlaystashGame;
+      await this.gameVersionRepository.save(version);
+    }
+
+    // Legacy games may not have normalized version rows yet; migrate the file
+    // over so the merge also works for libraries that were never re-indexed.
+    if (versions.length === 0 && from.file_path) {
+      await this.gameVersionRepository.save(
+        Object.assign(new GameVersion(), {
+          game: { id: to.id } as PlaystashGame,
+          file_path: from.file_path,
+          version: from.version,
+          size: from.size ?? 0n,
+          release_date: from.release_date,
+          early_access: !!from.early_access,
+          type: from.type || GameType.UNDETECTABLE,
+          indexed_at: from.updated_at || new Date(),
+        }),
+      );
+    }
+  }
+
+  /** Recomputes the legacy top-level version fields of a game. */
+  private async refreshDefaultVersion(gameId: number): Promise<void> {
+    const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
+      loadDeletedEntities: false,
+    });
+    const availableVersions = sortGameVersions(
+      await this.listAvailableVersionsFromStorage(game),
+    );
+    if (availableVersions.length === 0) {
+      return;
+    }
+
+    const selectedVersion = selectDefaultGameVersion(availableVersions);
+    const gamePatch = Object.assign(new PlaystashGame(), { id: gameId });
+    this.applyVersionToGame(gamePatch, selectedVersion);
+    await this.gamesService.save(gamePatch);
   }
 
   /**
@@ -194,7 +527,21 @@ export class FilesService implements OnApplicationBootstrap {
     }
 
     for (const filePath of existingVersionPaths) {
-      await rm(filePath);
+      if ((await stat(filePath)).isDirectory?.()) {
+        const root = await realpath(configuration.VOLUMES.FILES);
+        const target = await realpath(filePath);
+        const relative = path.relative(root, target);
+        if (
+          !relative ||
+          relative === ".." ||
+          relative.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relative)
+        )
+          throw new BadRequestException(
+            "Refusing to delete a directory outside the game library.",
+          );
+        await rm(target, { recursive: true });
+      } else await rm(filePath);
     }
 
     this.logger.log({
@@ -210,11 +557,22 @@ export class FilesService implements OnApplicationBootstrap {
    * Uploads a game file to the files volume.
    * Only supported file formats are accepted. The filename must be valid.
    * Write permissions on the files volume are required.
+   *
+   * The interceptor streams the upload to a temporary file on disk, so the
+   * whole game is never buffered in memory. This method validates the upload
+   * and moves the temporary file to its final location.
    */
   public async upload(file: Express.Multer.File): Promise<{ path: string }> {
+    const tempPath = file.path;
+
+    // The upload has already been streamed to a temporary file by the time this
+    // method runs, so every early return has to clean it up again.
+    const discardTempFile = () => discardStreamedUpload(tempPath, this.logger);
+
     const filename = filenameSanitizer(file.originalname);
 
     if (!filename) {
+      await discardTempFile();
       throw new BadRequestException(
         "The uploaded file has an invalid filename.",
       );
@@ -222,6 +580,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     const ext = toLower(path.extname(filename));
     if (!this.supportedFormatsSet.has(ext)) {
+      await discardTempFile();
       throw new BadRequestException(
         `Unsupported file format "${ext}". Supported formats: ${Array.from(this.supportedFormatsSet).join(", ")}`,
       );
@@ -231,6 +590,7 @@ export class FilesService implements OnApplicationBootstrap {
     try {
       await access(configuration.VOLUMES.FILES, constants.W_OK);
     } catch {
+      await discardTempFile();
       throw new BadRequestException(
         `The server does not have write permissions on the files volume "${configuration.VOLUMES.FILES}". Game upload requires write access.`,
       );
@@ -240,12 +600,23 @@ export class FilesService implements OnApplicationBootstrap {
 
     // Prevent overwriting existing files
     if (await pathExists(targetPath)) {
+      await discardTempFile();
       throw new BadRequestException(
         `A file named "${filename}" already exists in the game library.`,
       );
     }
 
-    await writeFile(targetPath, file.buffer);
+    // Move the streamed temporary file to its final location. `overwrite: false`
+    // keeps a concurrent upload from silently replacing the file.
+    try {
+      await move(tempPath, targetPath, { overwrite: false });
+    } catch (error) {
+      await discardTempFile();
+      throw new BadRequestException(
+        `Failed to store the uploaded game file "${filename}".`,
+        { cause: error },
+      );
+    }
 
     this.logger.log({
       message: "Game file uploaded successfully.",
@@ -263,7 +634,8 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Indexes a single file and updates the database accordingly. */
   private async index(path: string, stats?: Stats, skipIntegrityCheck = false) {
-    if (!path || !this.isValidFilePath(path)) {
+    const directoryGame = this.directoryGames.get(path);
+    if (!path || (!directoryGame && !this.isValidFilePath(path))) {
       return;
     }
 
@@ -283,7 +655,7 @@ export class FilesService implements OnApplicationBootstrap {
     });
 
     const gameToIndex = new PlaystashGame();
-    const filename = basename(path);
+    const filename = directoryGame ? `${basename(path)}.zip` : basename(path);
     gameToIndex.size = size;
     gameToIndex.file_path = path;
     gameToIndex.title = this.extractTitle(filename);
@@ -293,6 +665,21 @@ export class FilesService implements OnApplicationBootstrap {
     gameToIndex.release_date = this.extractReleaseYear(filename);
     gameToIndex.version = this.extractVersion(filename);
     gameToIndex.early_access = this.extractEarlyAccessFlag(filename);
+    if (directoryGame?.manifest?.title)
+      gameToIndex.title = directoryGame.manifest.title;
+    if (directoryGame?.manifest?.version)
+      gameToIndex.version = directoryGame.manifest.version;
+    gameToIndex.sort_title = this.gamesService.generateSortTitle(
+      gameToIndex.title,
+    );
+    const detectIndexedType = () =>
+      directoryGame
+        ? Promise.resolve(
+            directoryGame.manifest?.type ??
+              directoryGame.type ??
+              GameType.UNDETECTABLE,
+          )
+        : this.detectType(gameToIndex.file_path!);
 
     try {
       // Check if the game already exists in the database
@@ -320,20 +707,28 @@ export class FilesService implements OnApplicationBootstrap {
         case GameExistence.EXISTS:
         case GameExistence.EXISTS_BUT_ALTERED: {
           // Keep legacy rows normalized while preserving current default file path.
-          gameToIndex.type = await this.detectType(gameToIndex.file_path);
-          this.metadataService.addUpdateMetadataJob(
-            await this.upsertIndexedVersion(existingGame!.id, gameToIndex),
+          gameToIndex.type = await detectIndexedType();
+          const indexed = await this.upsertIndexedVersion(
+            existingGame!.id,
+            gameToIndex,
           );
+          this.metadataService.addUpdateMetadataJob(indexed);
+          if (existingGameTuple[0] === GameExistence.EXISTS_BUT_ALTERED) {
+            this.notifications?.publish("game.updated", indexed);
+          }
           break;
         }
 
         case GameExistence.DOES_NOT_EXIST: {
           // If it doesn't exist, detect the type and save it
-          gameToIndex.type = await this.detectType(gameToIndex.file_path);
+          gameToIndex.type = await detectIndexedType();
           const savedGame = await this.gamesService.save(gameToIndex);
-          this.metadataService.addUpdateMetadataJob(
-            await this.upsertIndexedVersion(savedGame.id, gameToIndex),
+          const indexed = await this.upsertIndexedVersion(
+            savedGame.id,
+            gameToIndex,
           );
+          this.metadataService.addUpdateMetadataJob(indexed);
+          this.notifications?.publish("game.added", indexed);
           break;
         }
 
@@ -342,10 +737,13 @@ export class FilesService implements OnApplicationBootstrap {
           const restoredGame = await this.gamesService.restore(
             existingGame!.id,
           );
-          gameToIndex.type = await this.detectType(gameToIndex.file_path);
-          this.metadataService.addUpdateMetadataJob(
-            await this.upsertIndexedVersion(restoredGame.id, gameToIndex),
+          gameToIndex.type = await detectIndexedType();
+          const indexed = await this.upsertIndexedVersion(
+            restoredGame.id,
+            gameToIndex,
           );
+          this.metadataService.addUpdateMetadataJob(indexed);
+          this.notifications?.publish("game.added", indexed);
           break;
         }
       }
@@ -409,6 +807,7 @@ export class FilesService implements OnApplicationBootstrap {
     const updatedGame = await this.gamesService.findOneByGameIdOrFail(id, {
       loadDeletedEntities: false,
     });
+    await this.metadataService.applyFolderTags?.(id);
     this.logger.log({
       message: `Updated game versions based on file changes.`,
       game: logPlaystashGame(updatedGame),
@@ -810,6 +1209,53 @@ export class FilesService implements OnApplicationBootstrap {
         `The game file "${sourcePath}" could not be found.`,
       );
     }
+    const directory = (await stat(sourcePath)).isDirectory();
+    const excluded = directory
+      ? (await readDirectory(sourcePath))
+          .filter((name) => SIDECAR_DIRECTORIES.has(name.toLowerCase()))
+          .map((name) => `r!${name}`)
+      : [];
+    if (directory) {
+      // node-7z 3 ignores $spawnOptions; starting 7-Zip here makes its input
+      // directory explicit instead of accidentally archiving the server cwd.
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(
+          "7z",
+          [
+            "a",
+            "-ttar",
+            output,
+            "*",
+            "-r",
+            "-bd",
+            "-bso0",
+            "-bsp0",
+            ...excluded.map((entry) => `-x${entry}`),
+          ],
+          {
+            cwd: sourcePath,
+            windowsHide: true,
+            stdio: ["ignore", "ignore", "pipe"],
+          },
+        );
+        let stderr = "";
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderr = (stderr + chunk.toString()).slice(-8192);
+        });
+        child.once("error", reject);
+        child.once("close", (code) =>
+          code === 0
+            ? resolve()
+            : reject(
+                new Error(`Game folder archive failed (${code}): ${stderr}`),
+              ),
+        );
+      }).catch(async (error) => {
+        await rm(output, { force: true });
+        throw error;
+      });
+      return;
+    }
     return new Promise<void>((resolve, reject) => {
       const archiveStream = add(output, sourcePath);
       archiveStream.on("error", async (error) => {
@@ -819,7 +1265,7 @@ export class FilesService implements OnApplicationBootstrap {
           output,
           error,
         });
-        await rm(output);
+        await rm(output, { force: true });
         reject(error);
       });
 
@@ -832,6 +1278,52 @@ export class FilesService implements OnApplicationBootstrap {
         resolve();
       });
     });
+  }
+
+  /**
+   * Checks whether a version file that the file scan did not report is still
+   * part of the indexed storage.
+   *
+   * A scan is only a snapshot of the filesystem: a file uploaded while it runs
+   * can be indexed by the file watcher without ever appearing in that snapshot,
+   * and an interrupted scan reports just the files it saw until then. Treating
+   * those files as deleted soft-deleted perfectly fine games, which then
+   * reappeared on the next scan.
+   *
+   * Files the scan would skip right now are deliberately *not* rescued, so
+   * removing a file from the scan (an exclude pattern, or moving it out of the
+   * files volume) still removes it from the library.
+   */
+  private async isStillInStorage(filePath: string): Promise<boolean> {
+    const relativePath = path.relative(configuration.VOLUMES.FILES, filePath);
+    if (
+      !relativePath ||
+      relativePath.startsWith("..") ||
+      path.isAbsolute(relativePath)
+    ) {
+      return false;
+    }
+
+    const segments = relativePath.split(path.sep);
+    const filename = segments.pop() ?? "";
+    if (
+      (!this.directoryGames.has(filePath) &&
+        !this.shouldIncludeFile(filename)) ||
+      segments.some((segment) => !this.shouldIncludeDirectory(segment))
+    ) {
+      return false;
+    }
+
+    try {
+      return await pathExists(filePath);
+    } catch (error) {
+      this.logger.warn({
+        message: "Failed to check whether a version file still exists.",
+        path: filePath,
+        error,
+      });
+      return false;
+    }
   }
 
   /**
@@ -864,6 +1356,22 @@ export class FilesService implements OnApplicationBootstrap {
       });
       return gamesInDatabase;
     }
+
+    // A scan that could not read the files volume at all (unmounted volume,
+    // changed `VOLUMES_FILES`, missing permissions) would mark the whole library
+    // as deleted. Refuse that instead of soft-deleting everything.
+    if (
+      gamesInFileSystem.length === 0 &&
+      !(await pathExists(configuration.VOLUMES.FILES))
+    ) {
+      this.logger.error({
+        message: "Skipping Integrity Check.",
+        reason: "The files volume is not accessible.",
+        path: configuration.VOLUMES.FILES,
+      });
+      return gamesInDatabase;
+    }
+
     this.logger.log({
       message: "Started Game Integrity Check.",
       count: gamesInDatabase.length,
@@ -873,6 +1381,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     const fsPaths = new Set(gamesInFileSystem.map((f) => f.path));
     const checkedGames: PlaystashGame[] = [];
+    const rescuedVersions: string[] = [];
     for (const gameInDatabase of gamesInDatabase) {
       try {
         const persistedVersions = await this.gameVersionRepository.find({
@@ -907,9 +1416,25 @@ export class FilesService implements OnApplicationBootstrap {
         } else {
           availablePersistedVersions = this.normalizeVersions(gameInDatabase);
         }
-        const existingVersions = availablePersistedVersions.filter((version) =>
-          fsPaths.has(version.file_path),
-        );
+        const existingVersions: GameVersion[] = [];
+        const missingVersions: GameVersion[] = [];
+        for (const version of availablePersistedVersions) {
+          if (fsPaths.has(version.file_path)) {
+            existingVersions.push(version);
+            continue;
+          }
+
+          // Not in the scan snapshot: it may still be on disk (see
+          // isStillInStorage), in which case the snapshot was incomplete and
+          // the version must not be treated as deleted.
+          if (await this.isStillInStorage(version.file_path)) {
+            existingVersions.push(version);
+            rescuedVersions.push(version.file_path);
+            continue;
+          }
+
+          missingVersions.push(version);
+        }
 
         // If none of the versions are available anymore, mark game as deleted.
         if (existingVersions.length === 0) {
@@ -936,9 +1461,9 @@ export class FilesService implements OnApplicationBootstrap {
           existingVersions.length !== availablePersistedVersions.length;
 
         if (versionsChanged) {
-          const staleVersionIds = activePersistedVersions
-            .filter((version) => !fsPaths.has(version.file_path))
-            .map((version) => version.id);
+          const staleVersionIds = missingVersions
+            .map((version) => version.id)
+            .filter((id): id is number => Number.isFinite(id));
 
           if (staleVersionIds.length > 0) {
             await this.gameVersionRepository.softDelete(staleVersionIds);
@@ -964,6 +1489,15 @@ export class FilesService implements OnApplicationBootstrap {
           error,
         });
       }
+    }
+    if (rescuedVersions.length > 0) {
+      this.logger.warn({
+        message: "File scan snapshot was incomplete.",
+        reason:
+          "Version files were found in storage that the file scan did not report. They were kept, but the scan should be inspected.",
+        count: rescuedVersions.length,
+        paths: rescuedVersions.slice(0, 20),
+      });
     }
     this.logger.log({
       message: "Finished Game Integrity Check.",
@@ -1017,6 +1551,7 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Checks whether a given dirname should be included by the indexer. */
   private shouldIncludeDirectory(dirname: string): boolean {
+    if (SIDECAR_DIRECTORIES.has(dirname.toLowerCase())) return false;
     const shouldExclude =
       configuration.GAMES.SEARCH_EXCLUDE_DIR_REGEX?.test(dirname);
     if (shouldExclude) {
@@ -1040,16 +1575,35 @@ export class FilesService implements OnApplicationBootstrap {
       }
 
       const { readdirp } = await import("readdirp");
+      const directories = await scanDirectoryGames(
+        configuration.VOLUMES.FILES,
+        configuration.GAMES.SEARCH_RECURSIVE,
+        (name) => this.shouldIncludeDirectory(name),
+        (directory, error) =>
+          this.logger.warn({
+            message: "Skipping invalid game directory package.",
+            directory,
+            error,
+          }),
+      );
+      this.directoryGames.clear();
+      for (const directory of directories)
+        this.directoryGames.set(directory.path, directory);
 
       const stream = readdirp(configuration.VOLUMES.FILES, {
         type: "files",
         depth: configuration.GAMES.SEARCH_RECURSIVE ? undefined : 0,
         fileFilter: (entry) => this.shouldIncludeFile(entry.basename),
-        directoryFilter: (entry) => this.shouldIncludeDirectory(entry.basename),
+        directoryFilter: (entry) =>
+          !this.directoryGames.has(entry.fullPath) &&
+          this.shouldIncludeDirectory(entry.basename),
         alwaysStat: true, // ensure size is available for integrity checks
       });
 
-      const files: File[] = [];
+      const files: File[] = directories.map((directory) => ({
+        path: directory.path,
+        size: directory.size,
+      }));
 
       return new Promise<File[]>((resolve) => {
         stream.on("data", (entry) => {
@@ -1140,7 +1694,7 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Schedules the deletion of a temporary file after a fixed timeout. */
   private scheduleTmpFileDeletion(gameId: number, filePath: string) {
-    const timeoutName = `delete-tmp-${gameId}`;
+    const timeoutName = `delete-tmp-${gameId}-${createHash("sha256").update(filePath).digest("hex").slice(0, 16)}`;
 
     // If a deletion is already scheduled, remove it to reset the timer
     if (this.schedulerRegistry.getTimeouts().includes(timeoutName)) {
@@ -1178,24 +1732,26 @@ export class FilesService implements OnApplicationBootstrap {
     speedlimitHeader?: number,
     rangeHeader?: string,
     filterByAge?: number,
+    requestingUser?: import("../users/playstash-user.entity.js").PlaystashUser,
   ): Promise<StreamableFile> {
-    // Set the download speed limit if provided, otherwise use the default value from configuration.
-    speedlimitHeader =
-      speedlimitHeader ??
-      configuration.SERVER.MAX_DOWNLOAD_BANDWIDTH_IN_KBPS ??
-      0;
-    speedlimitHeader *= 1024;
+    const downloadRate = createDownloadRateProvider(
+      configuration.SERVER,
+      speedlimitHeader,
+    );
 
     // Find the game by ID.
     const game = await this.gamesService.findOneByGameIdOrFail(gameId, {
       loadDeletedEntities: false,
       filterByAge,
+      requestingUser,
     });
     const selectedVersion =
       requestedVersionId != null
         ? await this.resolveDownloadVersion(game, requestedVersionId)
         : await this.resolveLatestDownloadVersion(game);
     let fileDownloadPath = selectedVersion.file_path;
+    const sourceFilename = path.basename(fileDownloadPath);
+    let downloadFilename = sourceFilename;
 
     // If mocking files for testing, return a StreamableFile with random bytes.
     if (configuration.TESTING.MOCK_FILES) {
@@ -1212,14 +1768,57 @@ export class FilesService implements OnApplicationBootstrap {
       });
     }
 
+    // The persisted version can be a directory even before the index has warmed up.
+    const sourceInfo = await stat(fileDownloadPath);
     // If the file format is not supported, create an archive and use it for download.
-    if (!globals.ARCHIVE_FORMATS.includes(path.extname(fileDownloadPath))) {
+    if (
+      sourceInfo.isDirectory?.() ||
+      !globals.ARCHIVE_FORMATS.includes(path.extname(fileDownloadPath))
+    ) {
       const sourcePath = fileDownloadPath;
-      fileDownloadPath = `/tmp/${gameId}.tar`;
+      const info = sourceInfo;
+      downloadFilename = info.isDirectory()
+        ? `${sourceFilename}.tar`
+        : `${path.basename(sourceFilename, path.extname(sourceFilename))}.tar`;
+      const fingerprint = info.isDirectory()
+        ? (await snapshotGameDirectory(sourcePath)).fingerprint
+        : `${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+      const key = createHash("sha256")
+        .update(`${sourcePath}:${fingerprint}`)
+        .digest("hex");
+      const cacheDirectory = path.join(tmpdir(), "playstash-downloads");
+      await ensureDir(cacheDirectory);
+      fileDownloadPath = path.join(cacheDirectory, `${gameId}-${key}.tar`);
 
-      // If the archive file does not exist, create it.
-      if (!(await pathExists(fileDownloadPath))) {
-        await this.archive(fileDownloadPath, sourcePath);
+      // Publish only complete archives and share an in-flight build between download requests.
+      let job = this.archiveJobs.get(fileDownloadPath);
+      if (!job) {
+        const output = fileDownloadPath;
+        job = (async () => {
+          if (await pathExists(output)) return;
+          const building = `${output}.part-${randomBytes(6).toString("hex")}.tar`;
+          try {
+            await this.archive(building, sourcePath);
+            const after = await stat(sourcePath);
+            const afterFingerprint = after.isDirectory()
+              ? (await snapshotGameDirectory(sourcePath)).fingerprint
+              : `${after.size}:${after.mtimeMs}:${after.ctimeMs}`;
+            if (afterFingerprint !== fingerprint)
+              throw new BadRequestException(
+                "The game changed while preparing its download. Please retry.",
+              );
+            await move(building, output, { overwrite: false });
+          } finally {
+            await rm(building, { force: true });
+          }
+        })();
+        this.archiveJobs.set(fileDownloadPath, job);
+      }
+      try {
+        await job;
+      } finally {
+        if (this.archiveJobs.get(fileDownloadPath) === job)
+          this.archiveJobs.delete(fileDownloadPath);
       }
 
       this.scheduleTmpFileDeletion(gameId, fileDownloadPath);
@@ -1233,10 +1832,23 @@ export class FilesService implements OnApplicationBootstrap {
     }
 
     // Apply range header if provided otherwise returns the entire file
-    const range = this.calculateRange(
-      rangeHeader,
-      (await stat(fileDownloadPath)).size,
-    );
+    const fileSize = (await stat(fileDownloadPath)).size;
+    response.setHeader("Accept-Ranges", "bytes");
+    let range: RangeHeader;
+    try {
+      range = this.calculateRange(rangeHeader, fileSize);
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() === 416)
+        response.setHeader("Content-Range", `bytes */${fileSize}`);
+      throw error;
+    }
+    if (rangeHeader !== undefined) {
+      response.status(206);
+      response.setHeader(
+        "Content-Range",
+        `bytes ${range.start}-${range.end}/${fileSize}`,
+      );
+    }
     this.logger.debug({
       message: "Applying download range.",
       rangeHeader,
@@ -1244,37 +1856,43 @@ export class FilesService implements OnApplicationBootstrap {
     });
 
     // Read the file and apply speed limit if necessary.
-    let file: Readable = createReadStream(fileDownloadPath, {
-      start: range.start,
-      end: range.end,
-    });
+    let file: Readable | undefined = fileSize
+      ? createReadStream(fileDownloadPath, {
+          start: range.start,
+          end: range.end,
+        })
+      : undefined;
 
     response.setHeader("X-Download-Size", range.size);
 
-    if (speedlimitHeader) {
-      file = file.pipe(new Throttle({ rate: speedlimitHeader }));
+    if (
+      file &&
+      (downloadRate() || configuration.SERVER.MAX_DOWNLOAD_BANDWIDTH_SCHEDULE)
+    ) {
+      const source = file;
+      const throttle = new DynamicDownloadThrottle(downloadRate);
+      source.on("error", (error) => throttle.destroy(error));
+      throttle.once("close", () => source.destroy());
+      response.once?.("close", () => throttle.destroy());
+      file = source.pipe(throttle);
     }
 
     // Increment the download count.
     game.download_count++;
     await this.gamesService.save(game);
 
-    const originalFilename = path.basename(fileDownloadPath);
-    const downloadFilename = globals.ARCHIVE_FORMATS.includes(
-      path.extname(originalFilename),
-    )
-      ? originalFilename
-      : `${path.basename(originalFilename, path.extname(originalFilename))}.tar`;
-
     const { default: mime } = await import("mime");
 
-    return new StreamableFile(file, {
+    const options = {
       disposition: `attachment; filename="${filenameSanitizer(
         unidecode(downloadFilename),
       )}"`,
       length: range.size,
       type: mime.getType(fileDownloadPath) ?? undefined,
-    });
+    };
+    return file
+      ? new StreamableFile(file, options)
+      : new StreamableFile(Buffer.alloc(0), options);
   }
 
   /**
@@ -1284,32 +1902,42 @@ export class FilesService implements OnApplicationBootstrap {
     rangeHeader: string | undefined,
     fileSize: number,
   ): RangeHeader {
-    let rangeStart = 0;
+    if (rangeHeader === undefined)
+      return { start: 0, end: fileSize - 1, size: fileSize };
+
+    const unavailable = () =>
+      new HttpException("Requested byte range is not available.", 416);
+    const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (!match || (!match[1] && !match[2]) || fileSize === 0)
+      throw unavailable();
+
+    let rangeStart: number;
     let rangeEnd = fileSize - 1;
-
-    if (rangeHeader?.includes("-")) {
-      const [start, end] = rangeHeader.replace("bytes=", "").split("-");
-
-      if (start) {
-        const parsedStart = Number(start);
-        if (!Number.isNaN(parsedStart) && parsedStart < fileSize) {
-          rangeStart = parsedStart;
-        }
-      }
-
-      if (end) {
-        const parsedEnd = Number(end);
-        if (!Number.isNaN(parsedEnd) && parsedEnd < fileSize) {
-          rangeEnd = parsedEnd >= rangeStart ? parsedEnd : rangeEnd;
-        }
+    if (!match[1]) {
+      const suffixSize = Number(match[2]);
+      if (!Number.isSafeInteger(suffixSize) || suffixSize <= 0)
+        throw unavailable();
+      rangeStart = Math.max(0, fileSize - suffixSize);
+    } else {
+      rangeStart = Number(match[1]);
+      if (match[2]) {
+        const requestedEnd = Number(match[2]);
+        if (!Number.isSafeInteger(requestedEnd)) throw unavailable();
+        rangeEnd = Math.min(rangeEnd, requestedEnd);
       }
     }
+    if (
+      !Number.isSafeInteger(rangeStart) ||
+      rangeStart < 0 ||
+      rangeStart >= fileSize ||
+      rangeEnd < rangeStart
+    )
+      throw unavailable();
 
-    const rangeSize = rangeEnd - rangeStart + 1;
     return {
       start: rangeStart,
       end: rangeEnd,
-      size: rangeSize,
+      size: rangeEnd - rangeStart + 1,
     };
   }
 }

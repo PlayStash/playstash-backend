@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   forwardRef,
   Inject,
   Injectable,
@@ -12,6 +14,7 @@ import {
   type DeepPartial,
   type FindManyOptions,
   type FindOneOptions,
+  In,
   IsNull,
   LessThanOrEqual,
   Or,
@@ -30,10 +33,13 @@ import { GenreMetadata } from "../metadata/genres/genre.metadata.entity.js";
 import { MetadataService } from "../metadata/metadata.service.js";
 import { PublisherMetadata } from "../metadata/publishers/publisher.metadata.entity.js";
 import { TagMetadata } from "../metadata/tags/tag.metadata.entity.js";
+import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
+import { gameAccessWhere, redactRestrictedProgress } from "./game-access.js";
 import { GameVersion } from "./game-version.entity.js";
-import { PlaystashGame } from "./playstash-game.entity.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { type UpdateGameDto } from "./models/update-game.dto.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 
 const { kebabCase, toLower } = lodash;
 
@@ -47,6 +53,7 @@ export class GamesService {
     "metadata",
     "provider_metadata",
     "user_metadata",
+    "allowed_users",
   ]);
 
   constructor(
@@ -77,7 +84,7 @@ export class GamesService {
         findParameters.withDeleted = true;
       }
 
-      if (options.filterByAge) {
+      if (options.filterByAge !== undefined) {
         findParameters.where = {
           id,
           metadata: {
@@ -86,7 +93,14 @@ export class GamesService {
         };
       }
 
-      return await this.gamesRepository.findOneOrFail(findParameters);
+      findParameters.where = gameAccessWhere(
+        options.requestingUser,
+        findParameters.where as any,
+      );
+      const game = await this.gamesRepository.findOneOrFail(findParameters);
+      return options.requestingUser
+        ? redactRestrictedProgress(game, options.requestingUser)
+        : game;
     } catch (error) {
       throw new NotFoundException(
         `Game with id ${id} was not found on the server.`,
@@ -120,7 +134,7 @@ export class GamesService {
       findParameters.withDeleted = true;
     }
 
-    if (options.filterByAge) {
+    if (options.filterByAge !== undefined) {
       if (!options.loadRelations) {
         findParameters.relations = toFindOptionsRelations<PlaystashGame>([
           "metadata",
@@ -133,7 +147,16 @@ export class GamesService {
       };
     }
 
-    return this.gamesRepository.find(findParameters);
+    findParameters.where = gameAccessWhere(
+      options.requestingUser,
+      findParameters.where as any,
+    );
+    const games = await this.gamesRepository.find(findParameters);
+    return options.requestingUser
+      ? games.map((game) =>
+          redactRestrictedProgress(game, options.requestingUser),
+        )
+      : games;
   }
 
   public async findRandom(options: FindOptions): Promise<PlaystashGame> {
@@ -147,7 +170,7 @@ export class GamesService {
       findParameters.withDeleted = true;
     }
 
-    if (options.filterByAge) {
+    if (options.filterByAge !== undefined) {
       findParameters.relations = toFindOptionsRelations<PlaystashGame>([
         "metadata",
       ]);
@@ -158,6 +181,10 @@ export class GamesService {
       };
     }
 
+    findParameters.where = gameAccessWhere(
+      options.requestingUser,
+      findParameters.where as any,
+    );
     const game = await this.gamesRepository
       .createQueryBuilder()
       .setFindOptions(findParameters)
@@ -169,6 +196,8 @@ export class GamesService {
       loadDeletedEntities: options.loadDeletedEntities,
       select: options.select,
       loadRelations: options.loadRelations,
+      filterByAge: options.filterByAge,
+      requestingUser: options.requestingUser,
     });
   }
 
@@ -185,11 +214,43 @@ export class GamesService {
     return this.gamesRepository.softRemove({ id });
   }
 
-  public async update(id: number, dto: UpdateGameDto) {
+  public async update(
+    id: number,
+    dto: UpdateGameDto,
+    requestingUser?: PlaystashUser,
+  ) {
+    if (
+      (dto.access_restricted !== undefined ||
+        dto.allowed_user_ids !== undefined) &&
+      requestingUser?.role !== Role.ADMIN
+    ) {
+      throw new ForbiddenException(
+        "Only administrators may change game access.",
+      );
+    }
     // Finds the game by ID
     const game = await this.findOneByGameIdOrFail(id, {
       loadDeletedEntities: true,
+      requestingUser,
     });
+
+    if (dto.access_restricted !== undefined)
+      game.access_restricted = dto.access_restricted;
+    if (dto.allowed_user_ids !== undefined) {
+      const users = dto.allowed_user_ids.length
+        ? await this.gamesRepository.manager
+            .getRepository(PlaystashUser)
+            .findBy({ id: In(dto.allowed_user_ids) })
+        : [];
+      if (users.length !== dto.allowed_user_ids.length)
+        throw new BadRequestException("An allowed user was not found.");
+      game.allowed_users = users;
+    }
+    if (
+      dto.access_restricted !== undefined ||
+      dto.allowed_user_ids !== undefined
+    )
+      await this.save(game);
 
     if (dto.mapping_requests != null) {
       for (const request of dto.mapping_requests) {
@@ -290,6 +351,19 @@ export class GamesService {
       if (dto.user_metadata.launch_executable != null) {
         updatedUserMetadata.launch_executable =
           dto.user_metadata.launch_executable;
+      }
+
+      for (const key of [
+        "archive_password",
+        "system_requirements_minimum",
+        "system_requirements_recommended",
+      ] as const) {
+        if (dto.user_metadata[key] != null) {
+          updatedUserMetadata[key] = dto.user_metadata[key];
+        }
+      }
+      if (dto.user_metadata.launch_profiles != null) {
+        updatedUserMetadata.launch_profiles = dto.user_metadata.launch_profiles;
       }
 
       if (dto.user_metadata.installer_parameters != null) {
@@ -394,7 +468,13 @@ export class GamesService {
       });
     }
 
-    return this.metadataService.merge(game.id);
+    const merged = await this.metadataService.merge(game.id);
+    return requestingUser
+      ? this.findOneByGameIdOrFail(game.id, {
+          requestingUser,
+          loadDeletedEntities: true,
+        })
+      : merged;
   }
 
   /** Restore a game that has been soft deleted. */
@@ -454,12 +534,19 @@ export class GamesService {
     }
 
     if (!foundGame) {
+      // Match on the normalized sort title as well, so titles that only differ
+      // in casing, punctuation or a leading article (e.g. "The Roottrees are
+      // Dead" vs "The Roottrees Are Dead") resolve to the same game and become
+      // versions of it instead of separate games.
+      const sortTitle =
+        game.sort_title || this.generateSortTitle(game.title ?? "");
+
       const titleCandidates =
         (await this.gamesRepository.find({
           relationLoadStrategy: "query",
-          where: {
-            title: game.title,
-          },
+          where: sortTitle
+            ? [{ title: game.title }, { sort_title: sortTitle }]
+            : { title: game.title },
           relations: this.defaultRelations,
           withDeleted: true,
         })) || [];

@@ -1,4 +1,4 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Request } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -18,8 +18,10 @@ import { Repository } from "typeorm";
 import { MinimumRole } from "../../../decorators/minimum-role.decorator.js";
 import { PaginateQueryOptions } from "../../../decorators/pagination.decorator.js";
 import { ApiOkResponsePaginated } from "../../../globals.js";
+import { applyGameAccessFilter } from "../../games/game-access.js";
 import { PlaystashGame } from "../../games/playstash-game.entity.js";
 import { Role } from "../../users/models/role.enum.js";
+import type { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { DeveloperMetadata } from "./developer.metadata.entity.js";
 
 @Controller("developers")
@@ -48,6 +50,7 @@ export class DeveloperController {
   @PaginateQueryOptions()
   async getDevelopers(
     @Paginate() query: PaginateQuery,
+    @Request() request?: { user: PlaystashUser },
   ): Promise<Paginated<DeveloperMetadata>> {
     const queryBuilder = this.developerRepository
       .createQueryBuilder("developer")
@@ -61,6 +64,8 @@ export class DeveloperController {
         provider_slug: "playstash",
       })
       .groupBy("developer.id");
+
+    if (request) applyGameAccessFilter(queryBuilder, "game", request.user);
 
     // If no specific sort is provided, sort by the number of games in descending order
     if (query.sortBy?.length === 0) {

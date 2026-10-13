@@ -1,16 +1,18 @@
-name: Deploy
+name: Build and release server
 
 on:
   push:
-    branches:
-      - main
-      - hotfix
-      - dev
-      - early-access
+    branches: [main, dev]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
 
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  group: server-release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -24,152 +26,165 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
-    outputs:
-      version: ${{ steps.package-version.outputs.current-version }}
+        platform: [linux/amd64, linux/arm64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: "${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix' && 0 || 1 }}"
-
-      - name: Fetch Current Package Version
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix' || github.ref == 'refs/heads/dev'
-        id: package-version
-        uses: martinbeentjes/npm-get-version-action@v1.3.1
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+      - uses: actions/checkout@v7
+      - name: Validate version tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$REF_TYPE" = tag ] && [ "$REF_NAME" != "v$version" ]; then
+            echo 'Version tag does not match package.json.' >&2
+            exit 1
+          fi
+      - name: Image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push by digest
+      - name: Build and push architecture image
         id: build
         uses: docker/build-push-action@v7
         with:
+          context: .
           platforms: ${{ matrix.platform }}
-          tags: |
-            playstash/playstash-backend
-            ghcr.io/playstash/playstash-backend
+          tags: ${{ steps.image.outputs.name }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+          cache-from: type=gha,scope=server-${{ strategy.job-index }}
+          cache-to: type=gha,mode=max,scope=server-${{ strategy.job-index }}
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
         with:
-          name: digests-${{ strategy.job-index }}
-          path: /tmp/digests/*
+          name: server-digest-${{ strategy.job-index }}
+          path: digests/*
           if-no-files-found: error
           retention-days: 1
 
-  manifest:
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
-    needs: docker
+  publish:
+    if: ${{ always() && vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && needs.docker.result == 'success' && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped') }}
+    needs: [docker, sonarcloud]
     runs-on: ubuntu-latest
     steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
-          path: /tmp/digests
-          pattern: digests-*
+          pattern: server-digest-*
+          path: digests
           merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create manifest list and push
+      - name: Publish manifest and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          BRANCH="${GITHUB_REF#refs/heads/}"
-          VERSION="${{ needs.docker.outputs.version }}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          refs=()
+          for digest in digests/*; do refs+=("$image@sha256:$(basename "$digest")"); done
+          tags=(-t "$image:sha-${GITHUB_SHA:0:12}")
+          if [ "$REF_NAME" = dev ]; then
+            tags+=(-t "$image:dev")
+            docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+            exit 0
+          fi
 
-          push_manifest() {
-            local REPO=$1
-            local TAGS=$2
-            local ARGS=""
-            for tag in $TAGS; do
-              ARGS="$ARGS -t $REPO:$tag"
-            done
-            
-            docker buildx imagetools create $ARGS \
-              $(printf "$REPO@sha256:%s " $(ls /tmp/digests))
-          }
+          tags+=(-t "$image:latest")
+          publish_release=false
+          create_draft=false
+          # REST releases/tags cannot discover drafts with a pending tag.
+          query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { id release(tagName: $tag) { databaseId isDraft } } }'
+          if ! gh api graphql -f query="$query" -F owner="${GITHUB_REPOSITORY%/*}" -F name="${GITHUB_REPOSITORY#*/}" -F tag="$tag" > release-query.json 2> release-error.log; then
+            cat release-error.log >&2
+            exit 1
+          fi
+          release_id=$(node -e '
+            const response = JSON.parse(require("node:fs").readFileSync("release-query.json", "utf8"));
+            const repository = response.data?.repository;
+            if ((response.errors != null && (!Array.isArray(response.errors) || response.errors.length > 0)) ||
+                !repository || typeof repository.id !== "string" || !Object.hasOwn(repository, "release")) {
+              throw new Error("Release lookup returned invalid repository metadata; refusing to publish images.");
+            }
+            const release = repository.release;
+            if (release !== null) {
+              if (!release || !Number.isSafeInteger(release.databaseId) || release.databaseId <= 0 || typeof release.isDraft !== "boolean") {
+                throw new Error("Release lookup returned invalid release metadata; refusing to publish images.");
+              }
+              console.log(release.databaseId);
+            }
+          ')
+          if [ -n "$release_id" ]; then
+            if ! gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" > release-state.json 2> release-error.log; then
+              cat release-error.log >&2
+              exit 1
+            fi
+            node -e '
+              const release = JSON.parse(require("node:fs").readFileSync("release-state.json", "utf8"));
+              if (release.id !== Number(process.argv[1]) || release.tag_name !== process.argv[2] ||
+                  typeof release.draft !== "boolean" || typeof release.target_commitish !== "string") {
+                throw new Error("Release details returned invalid metadata; refusing to publish images.");
+              }
+            ' "$release_id" "$tag"
+            draft=$(jq -r .draft release-state.json)
+            if [ "$draft" = true ]; then
+              if [ "$(jq -r .target_commitish release-state.json)" != "$GITHUB_SHA" ]; then
+                echo 'The existing draft belongs to a different commit; use a new version.' >&2
+                exit 1
+              fi
+              publish_release=true
+            elif [ "$draft" != false ]; then
+              echo 'Release lookup returned invalid metadata; refusing to publish images.' >&2
+              exit 1
+            fi
+          else
+            create_draft=true
+            publish_release=true
+          fi
 
-          case "$BRANCH" in
-            main|hotfix)
-              push_manifest "playstash/playstash-backend" "latest $VERSION"
-              push_manifest "ghcr.io/playstash/playstash-backend" "latest $VERSION"
-              ;;
-            dev)
-              push_manifest "playstash/playstash-backend" "unstable"
-              push_manifest "ghcr.io/playstash/playstash-backend" "unstable"
-              ;;
-            early-access)
-              push_manifest "playstash/playstash-backend" "early-access"
-              push_manifest "ghcr.io/playstash/playstash-backend" "early-access"
-              ;;
-          esac
+          if [ "$publish_release" = true ]; then
+            node scripts/release-notes.mjs "$version" > release-notes.md
+            printf '\nContainer: `%s:%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
+            # Reserve this version for this commit before touching its image tag.
+            if [ "$create_draft" = true ]; then
+              gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "PlayStash Server $version" --notes-file release-notes.md
+            else
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+            fi
+            tags+=(-t "$image:$tag")
+          fi
 
-      - name: Create Github Tag & Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix'
-        id: release
-        uses: CupOfTea696/gh-action-auto-release@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Discord notification
-        if: vars.PLAYSTASH_DISCORD_NOTIFICATIONS == 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix')
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_BOT_WEBHOOK }}
-        with:
-          args: "New Release: {{ EVENT_PAYLOAD.repository.full_name }} v${{ needs.docker.outputs.version }} has been deployed. Here are the changes: https://github.com/{{ EVENT_PAYLOAD.repository.full_name }}/releases/tag/${{ needs.docker.outputs.version }}"
+          # Existing published version tags remain unchanged; latest/sha can advance.
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          if [ "$publish_release" = true ]; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          fi
 
   sonarcloud:
-    needs: manifest
+    needs: test
     if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && vars.PLAYSTASH_SONAR_PROJECT_KEY != '' && vars.PLAYSTASH_SONAR_ORGANIZATION != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v8
+      - uses: SonarSource/sonarqube-scan-action@v8
         with:
           args: >-
             -Dsonar.projectKey=${{ vars.PLAYSTASH_SONAR_PROJECT_KEY }}

@@ -91,11 +91,11 @@ describe("ApiKeyGuard", () => {
     expect(result).toBe(true);
   });
 
-  it("should emit exception to WS client when no API key and WS", async () => {
+  it("rejects unauthenticated WebSocket messages instead of invoking HTTP JWT authentication", async () => {
     reflector.getAllAndOverride.mockReturnValue(null);
     const ctx = wsContext();
     const result = await guard.canActivate(ctx);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     const client = ctx.switchToWs().getClient();
     expect(client.emit).toHaveBeenCalledWith(
       "exception",
@@ -135,6 +135,19 @@ describe("ApiKeyGuard", () => {
     const result = await guard.canActivate(ctx);
     expect(result).toBe(true);
     expect(ctx.switchToWs().getClient().user).toBe(user);
+  });
+  it("authenticates browser WebSockets through handshake auth without a query-string key", async () => {
+    const user = { id: 1, role: Role.USER, activated: true };
+    mockApiKeyService.findUserByApiKeyOrFail.mockResolvedValue(user);
+    const context = wsContext();
+    context.switchToWs().getClient().handshake.auth = {
+      api_key: "browser-key",
+    };
+    expect(await guard.canActivate(context)).toBe(true);
+    expect(mockApiKeyService.findUserByApiKeyOrFail).toHaveBeenCalledWith(
+      "browser-key",
+    );
+    expect(context.switchToWs().getClient().user).toBe(user);
   });
 
   // ─── Deleted user ─────────────────────────────────────────────────

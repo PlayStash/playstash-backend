@@ -161,6 +161,11 @@ export class UsersController {
   ): Promise<PlaystashUser> {
     const user = await this.usersService.findOneByUserIdOrFail(
       Number(params.user_id),
+      {
+        loadDeletedEntities: true,
+        loadRelations: true,
+        requestingUser: request.user,
+      },
     );
     if (user.id === request.user.id) {
       // If the user is requesting their own details, ensure the API key is loaded.

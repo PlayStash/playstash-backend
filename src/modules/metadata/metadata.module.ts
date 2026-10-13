@@ -1,5 +1,7 @@
 import { forwardRef, Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { AutoTagsController } from "./auto-tags.controller.js";
+import { AutoTagsService } from "./auto-tags.service.js";
 
 import { GamesModule } from "../games/games.module.js";
 import { MediaModule } from "../media/media.module.js";
@@ -15,6 +17,7 @@ import { MetadataController } from "./metadata.controller.js";
 import { MetadataService } from "./metadata.service.js";
 import { IgdbMetadataProviderService } from "./providers/igdb/igdb.metadata-provider.service.js";
 import { RawgLegacyMetadataProviderService } from "./providers/rawg-legacy/rawg-legacy.metadata-provider.service.js";
+import { SteamMetadataProviderService } from "./providers/steam/steam.metadata-provider.service.js";
 import { TestHighPriorityProviderService } from "./providers/testing/test-high-priority.metadata-provider.service.js";
 import { TestLowPriorityProviderService } from "./providers/testing/test-low-priority.metadata-provider.service.js";
 import { PublisherMetadata } from "./publishers/publisher.metadata.entity.js";
@@ -37,6 +40,7 @@ import { TagsController } from "./tags/tags.metadata.controller.js";
     MediaModule,
   ],
   providers: [
+    AutoTagsService,
     MetadataService,
     DeveloperMetadataService,
     GameMetadataService,
@@ -45,6 +49,7 @@ import { TagsController } from "./tags/tags.metadata.controller.js";
     TagMetadataService,
     RawgLegacyMetadataProviderService,
     IgdbMetadataProviderService,
+    SteamMetadataProviderService,
     TestLowPriorityProviderService,
     TestHighPriorityProviderService,
   ],
@@ -57,6 +62,7 @@ import { TagsController } from "./tags/tags.metadata.controller.js";
     TagMetadataService,
   ],
   controllers: [
+    AutoTagsController,
     MetadataController,
     TagsController,
     GenresController,
