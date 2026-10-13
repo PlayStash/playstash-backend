@@ -16,11 +16,9 @@ concurrency:
 
 jobs:
   test:
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     uses: ./.github/workflows/test.yml
 
   docker:
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     needs: test
     runs-on: ubuntu-latest
     strategy:
@@ -73,7 +71,7 @@ jobs:
           retention-days: 1
 
   publish:
-    if: ${{ always() && vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && needs.docker.result == 'success' && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped') }}
+    if: ${{ always() && needs.docker.result == 'success' && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped') }}
     needs: [docker, sonarcloud]
     runs-on: ubuntu-latest
     steps:
@@ -178,7 +176,7 @@ jobs:
 
   sonarcloud:
     needs: test
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && vars.PLAYSTASH_SONAR_PROJECT_KEY != '' && vars.PLAYSTASH_SONAR_ORGANIZATION != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') }}
+    if: ${{ vars.PLAYSTASH_SONAR_PROJECT_KEY != '' && vars.PLAYSTASH_SONAR_ORGANIZATION != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

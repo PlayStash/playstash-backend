@@ -16,9 +16,11 @@ PlayStash features do not require a paid subscription.
 
 The repository uses `main` for stable releases and `dev` for development builds.
 
-Workflow jobs are disabled by default. To enable them deliberately, set the repository Actions variable `PLAYSTASH_RUN_WORKFLOWS` to the exact value `true` under Settings → Secrets and variables → Actions → Variables. An unset variable, `false`, or any other value keeps every job disabled. Existing branch and project conditions still apply after enabling workflows.
+GitHub-hosted jobs run automatically on their declared triggers. Pull requests run the checks; pushes to `main` and `dev` or matching version tags run checks and container publishing. Branch, dependency and optional project conditions still apply. The image-deletion workflow remains manual through `workflow_dispatch`.
 
-Enabling workflows builds and checks each push. Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.0` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
+This repository currently defines no self-hosted runner jobs. Any future jobs on user-installed runners must require the repository Actions variable `PLAYSTASH_RUN_SELF_HOSTED` to equal the exact value `true`; unset or `false` keeps those jobs disabled by default. Configure the variable under Settings → Secrets and variables → Actions → Variables. It does not gate GitHub-hosted jobs.
+
+Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.0` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 

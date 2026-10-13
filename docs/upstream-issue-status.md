@@ -76,6 +76,8 @@ configured trusted origins; arbitrary redirect targets are rejected.
   passed authenticated presence, history, named UUID-correlated replies, retry
   deduplication, a server heartbeat interval and room departure.
 
-This checkpoint does not claim a deployed release, enabled workflows, live Steam
-availability, a configured webhook, or an achievement implementation. Repository
-workflow gates remain disabled until deliberately enabled by an operator.
+This checkpoint does not claim a deployed release, a completed hosted CI run,
+live Steam availability, a configured webhook, or an achievement implementation.
+GitHub-hosted workflows run automatically on their declared triggers. No
+self-hosted runner jobs are currently defined; future jobs on user-installed
+runners must require `PLAYSTASH_RUN_SELF_HOSTED=true`, disabled by default.

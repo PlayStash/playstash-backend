@@ -39,7 +39,7 @@
 - Added PlayStash branding throughout the server, configuration, API models, metadata identifiers, logs and deployment examples.
 - All PlayStash features are available without a paid subscription.
 - The OpenAPI specification documents required path parameters and can be exported locally for client generation.
-- Workflow jobs run only when the repository Actions variable `PLAYSTASH_RUN_WORKFLOWS` is set to `true`; they are disabled by default.
+- GitHub-hosted checks and releases run automatically on their declared triggers; only future self-hosted runner jobs require `PLAYSTASH_RUN_SELF_HOSTED=true`, disabled by default.
 - Optional SonarCloud scans require your own account and explicit configuration.
 - GitHub builds AMD64/ARM64 server images on `main` and `dev`; versioned releases reserve their commit in a draft before publishing images, reliably find pending drafts on retries, reject failed release lookups and retain published version images unchanged.
 - The web interface can load an offline frontend ZIP or private GitHub releases using a server-only read token.

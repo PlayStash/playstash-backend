@@ -7,7 +7,7 @@ on:
 jobs:
   add-to-project:
     name: Add issue to project
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && (vars.PROJECT_URL != '') }}
+    if: ${{ vars.PROJECT_URL != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/add-to-project@v0.5.0

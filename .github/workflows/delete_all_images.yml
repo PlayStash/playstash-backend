@@ -5,7 +5,6 @@ on:
 
 jobs:
   delete-all-images:
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/delete-package-versions@v5
