@@ -38,9 +38,13 @@ jobs:
           pnpm lint
 
       - name: Verify fresh SQLite schema
+        env:
+          SERVER_LOG_FILES_ENABLED: 'false'
         run: pnpm check:fresh-schema sqlite
 
       - name: Verify compiled Socket.IO DTOs and validation
+        env:
+          SERVER_LOG_FILES_ENABLED: 'false'
         run: node scripts/check-chat-runtime.mjs
 
       - name: Upload coverage report
@@ -90,5 +94,6 @@ jobs:
 
       - name: Run Postgres migrations
         env:
+          SERVER_LOG_FILES_ENABLED: 'false'
           PLAYSTASH_TEST_DATABASE_URL: postgresql://playstash:playstash@127.0.0.1:5432/playstash
         run: pnpm check:fresh-schema postgres
