@@ -5,6 +5,8 @@
 ### Breaking Changes & Migration
 
 - The default Docker Compose installation uses the published stable image and PostgreSQL with persistent host directories instead of building the source and using a placeholder database password. -> **For a fresh server, copy `docker-compose.yml` and run `docker compose up -d`; existing PostgreSQL deployments must keep their current credentials and data directories.**
+- Container installations prioritize the bundled web interface over GitHub release selection. -> **To use `WEB_UI_VERSION` or its YAML setting, set `WEB_UI_LOCAL_BUNDLE` to an empty value and provide a read-only GitHub token when the selected frontend repository is private.**
+- Server releases verify anonymous access to both runtime images before publishing. -> **Make the backend container package public to enable Docker installation without registry credentials; the source repository can remain private.**
 
 ### Changes
 
