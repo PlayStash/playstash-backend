@@ -82,6 +82,8 @@ try {
     ["playstash_game", "access_restricted"],
     ["playstash_user", "share_restricted_activity"],
     ["playstash_user", "report_game_metrics"],
+    ["playstash_user", "sso_provider"],
+    ["playstash_user", "sso_subject"],
   ]) {
     if (
       !tables
@@ -290,6 +292,8 @@ try {
   });
   const { checkFolderTags } = await import("./check-folder-tags.mjs");
   await checkFolderTags(source, { publicGame, service, gameRepository });
+  const { checkAuthIdentity } = await import("./check-auth-identity.mjs");
+  await checkAuthIdentity(source);
   console.log(
     `${system}: ${migrations.length} migrations passed; PlayStash tables, shared metadata, access/privacy and bookmarks verified.`,
   );

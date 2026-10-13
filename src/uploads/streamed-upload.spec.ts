@@ -1,3 +1,4 @@
+/* oxlint-disable no-underscore-dangle -- Multer's storage engine exposes these methods. */
 import { type LoggerService } from "@nestjs/common";
 import {
   existsSync,
@@ -65,6 +66,62 @@ describe("createStreamingTempStorageEngine", () => {
     );
 
     expect(existsSync(info.path!)).toBe(false);
+  });
+  it("closes and removes partial uploads when the incoming stream fails", async () => {
+    const stream = new PassThrough();
+    const file = { stream } as unknown as Express.Multer.File;
+    const done = vi.fn();
+    const completed = new Promise<unknown>((resolve) => {
+      engine._handleFile({}, file, (error) => {
+        done(error);
+        resolve(error);
+      });
+    });
+    stream.write("partial upload");
+    stream.destroy(new Error("client disconnected"));
+    expect(await completed).toBeInstanceOf(Error);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(existsSync(file.path)).toBe(false);
+  });
+  it("removes an active upload without leaving its output open", async () => {
+    const stream = new PassThrough();
+    const file = { stream } as unknown as Express.Multer.File;
+    const finished = new Promise<unknown>((resolve) =>
+      engine._handleFile({}, file, resolve),
+    );
+    const tempPath = file.path;
+    stream.write("still uploading");
+    await new Promise<void>((resolve, reject) =>
+      engine._removeFile({}, file, (error) =>
+        error ? reject(error) : resolve(),
+      ),
+    );
+    expect(await finished).toBeInstanceOf(Error);
+    expect(stream.destroyed).toBe(true);
+    expect(existsSync(tempPath)).toBe(false);
+  });
+  it("reports an already-aborted stream and directory errors through the callback", async () => {
+    const stream = new PassThrough();
+    stream.destroy();
+    const aborted = vi.fn();
+    engine._handleFile(
+      {},
+      { stream } as unknown as Express.Multer.File,
+      aborted,
+    );
+    expect(aborted).toHaveBeenCalledWith(expect.any(Error));
+    const brokenDirectory = createStreamingTempStorageEngine(() => {
+      throw new Error("unavailable volume");
+    });
+    const callback = vi.fn();
+    expect(() =>
+      brokenDirectory._handleFile(
+        {},
+        { stream: new PassThrough() } as unknown as Express.Multer.File,
+        callback,
+      ),
+    ).not.toThrow();
+    expect(callback).toHaveBeenCalledWith(expect.any(Error));
   });
 });
 

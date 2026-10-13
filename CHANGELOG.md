@@ -1,5 +1,27 @@
 # PlayStash Backend Changelog
 
+## 17.1.1
+
+### Breaking Changes & Migration
+
+- A configured administrator name is reserved and registration requires the operator's configured password. -> **Set `SERVER_ADMIN_PASSWORD` before registering `SERVER_ADMIN_USERNAME`; SSO cannot claim that reserved name.**
+- SSO identities are bound to the configured provider and its immutable subject, with no automatic linking by username or email; the authenticated UserInfo endpoint is required. -> **Set `AUTH_OAUTH2_USERINFO_URL` and create separate SSO accounts when local names or emails already exist.**
+- Token-signing keys are no longer derived from database, administrator or provider passwords. -> **Configure an independently generated `AUTH_SEED` of at least 32 bytes for stable sessions; otherwise a new random key is generated at every restart.**
+- Credentialed cross-origin requests require an explicit allowed origin. -> **Set `SERVER_CORS_ALLOWED_ORIGINS` for cross-origin cookie-based clients; bearer-authenticated clients remain supported.**
+
+- Remote metadata artwork must resolve to public HTTP(S) addresses, and downloaded media observes `MEDIA_MAX_SIZE` with a 64 MiB fallback when the limit is disabled. -> **Upload local artwork directly instead of using private-network URLs.**
+- Game, media and save paths reject nested filesystem links; frontend ZIPs must contain ordinary relative files and stay within 256 MiB compressed and expanded. -> **Replace nested links with ordinary files and use a compatible frontend bundle.**
+
+### Changes
+
+- Fixed account confusion caused by wildcard usernames and recycled usernames or email addresses in old access/refresh tokens.
+- SSO redirect handoffs carry tokens only in URL fragments; server logs omit query strings and redact nested credentials, password hashes and session tokens before console or file output.
+- Server images use a smaller updated Alpine runtime, verified 7-Zip 26.04, service-user file permissions and no compiler or package manager at runtime.
+- Security updates patch known vulnerabilities across direct and transitive runtime/development dependencies, including multipart uploads, request logging, proxy address handling and HTTP parsing.
+- Metadata image downloads validate every redirect and pin checked DNS addresses, limit streamed response sizes and omit signed URLs from download failures; active SVG/XML resources are rejected before decoding.
+- Frontend ZIP downloads restrict redirects to approved GitHub HTTPS hosts and limit downloaded/extracted bytes; unsafe paths, links, duplicate files and oversized archives cannot replace the active cache.
+- Aborted streamed uploads close their output files and remove partial data; game/media/save operations reject paths outside their configured volume or through nested links.
+
 ## 17.1.0
 
 ### Breaking Changes & Migration

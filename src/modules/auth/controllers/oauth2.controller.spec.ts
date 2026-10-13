@@ -16,12 +16,10 @@ vi.mock("../../../configuration.js", () => ({
 describe("OAuth2 client token handoff", () => {
   function setup(origin: string, token = "access-token") {
     const controller = new OAuth2Controller({
-      login: vi
-        .fn()
-        .mockResolvedValue({
-          access_token: token,
-          refresh_token: "refresh-token",
-        }),
+      login: vi.fn().mockResolvedValue({
+        access_token: token,
+        refresh_token: "refresh-token",
+      }),
     } as any);
     const request = {
       user: { username: "user" },
@@ -77,7 +75,7 @@ describe("OAuth2 client token handoff", () => {
     runInNewContext(script, { window });
     expect(window.opener.postMessage).not.toHaveBeenCalled();
     expect(window.location.replace).toHaveBeenCalledWith(
-      "https://backend.example/?access_token=access-token&refresh_token=refresh-token",
+      "https://backend.example/#access_token=access-token&refresh_token=refresh-token",
     );
   });
 

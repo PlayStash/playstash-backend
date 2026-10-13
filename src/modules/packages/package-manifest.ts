@@ -1,7 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 import { GameType } from "../games/models/game-type.enum.js";
 
 export const PACKAGE_MANIFEST = "playstash-package.json";
@@ -152,18 +153,7 @@ export async function resolvePackagePath(
   relative: string,
 ): Promise<string> {
   const safe = validateRelativePackagePath(relative);
-  const resolvedRoot = await realpath(root);
-  const resolved = await realpath(path.resolve(root, safe));
-  const remainder = path.relative(resolvedRoot, resolved);
-  if (
-    !remainder ||
-    remainder === ".." ||
-    remainder.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(remainder)
-  ) {
-    throw new BadRequestException("Package file is outside the game folder.");
-  }
-  return resolved;
+  return resolveStoragePath(root, path.resolve(root, safe));
 }
 
 export async function readPackageManifest(

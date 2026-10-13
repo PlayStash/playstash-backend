@@ -124,7 +124,7 @@ describe("game package manifests and directory grouping", () => {
       );
       await expect(
         resolvePackagePath(root, "linked/private.txt"),
-      ).rejects.toThrow("outside");
+      ).rejects.toThrow("symbolic links");
       await expect(snapshotGameDirectory(root)).rejects.toThrow(
         "symbolic links",
       );

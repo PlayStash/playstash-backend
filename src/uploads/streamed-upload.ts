@@ -1,8 +1,10 @@
 import { type LoggerService, ParseFilePipe } from "@nestjs/common";
 import fsExtra from "fs-extra";
 import { randomBytes } from "node:crypto";
+import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import path from "node:path";
+import { pipeline } from "node:stream";
 const { createWriteStream, ensureDirSync, remove } = fsExtra;
 
 /** Form field every streamed upload endpoint reads its file from. */
@@ -78,37 +80,52 @@ type RemoveCallback = (error: Error | null) => void;
  * @param getDirectory - Resolves the directory the temporary file is written to.
  */
 export function createStreamingTempStorageEngine(getDirectory: () => string) {
+  const active = new WeakMap<Express.Multer.File, WriteStream>();
   return {
     _handleFile(
       _req: unknown,
       file: Express.Multer.File,
       callback: UploadCallback,
     ) {
-      const directory = getDirectory();
-      const filename = `.playstash-${randomBytes(16).toString("hex")}${STREAMED_UPLOAD_TEMP_SUFFIX}`;
-      const tempPath = path.join(directory, filename);
-
       if (file.stream.destroyed) {
+        callback(new Error("Upload stream was aborted."));
         return;
       }
-
-      ensureDirSync(directory);
-
-      const outputStream = createWriteStream(tempPath);
+      let directory: string;
+      let outputStream: WriteStream;
+      const filename = `.playstash-${randomBytes(16).toString("hex")}${STREAMED_UPLOAD_TEMP_SUFFIX}`;
+      let tempPath: string;
+      try {
+        directory = getDirectory();
+        tempPath = path.join(directory, filename);
+        ensureDirSync(directory);
+        outputStream = createWriteStream(tempPath, { flags: "wx" });
+      } catch (error) {
+        callback(error);
+        return;
+      }
       // Set the path synchronously so Multer can remove the partial file if the
       // request is aborted before the upload finished.
       file.path = tempPath;
-
-      file.stream.pipe(outputStream);
-      outputStream.on("error", (error) => callback(error));
-      outputStream.on("finish", () =>
+      active.set(file, outputStream);
+      pipeline(file.stream, outputStream, (error) => {
+        active.delete(file);
+        if (error) {
+          // pipeline closes both streams before its callback, so aborted
+          // uploads cannot keep an unlinked file descriptor consuming disk.
+          remove(tempPath).then(
+            () => callback(error),
+            () => callback(error),
+          );
+          return;
+        }
         callback(null, {
           destination: directory,
           filename,
           path: tempPath,
           size: outputStream.bytesWritten,
-        }),
-      );
+        });
+      });
     },
 
     _removeFile(
@@ -117,13 +134,23 @@ export function createStreamingTempStorageEngine(getDirectory: () => string) {
       callback: RemoveCallback,
     ) {
       const tempPath = file.path;
+      const output = active.get(file);
       delete (file as Partial<Express.Multer.File>).destination;
       delete (file as Partial<Express.Multer.File>).filename;
       delete (file as Partial<Express.Multer.File>).path;
-      remove(tempPath).then(
-        () => callback(null),
-        (error) => callback(error),
-      );
+      const closed =
+        output && !output.closed
+          ? new Promise<void>((resolve) => {
+              output.once("close", resolve);
+              output.destroy();
+            })
+          : Promise.resolve();
+      closed
+        .then(() => (tempPath ? remove(tempPath) : undefined))
+        .then(
+          () => callback(null),
+          (error) => callback(error),
+        );
     },
   };
 }

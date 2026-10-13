@@ -18,6 +18,8 @@ const { move, pathExists, remove, writeFile } = fsExtra;
 
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
+import { downloadPublicMedia } from "../../http/public-download.js";
 import { logMedia } from "../../logging.js";
 import { discardStreamedUpload } from "../../uploads/streamed-upload.js";
 import { canAccessGame } from "../games/game-access.js";
@@ -90,6 +92,11 @@ export class MediaService {
   public async findOneByMediaIdOrFail(id: number): Promise<Media> {
     try {
       const media = await this.mediaRepository.findOneByOrFail({ id });
+      if (!this.config.TESTING.MOCK_FILES && media.file_path)
+        media.file_path = await resolveStoragePath(
+          this.config.VOLUMES.MEDIA,
+          media.file_path,
+        );
       if (!(
         (await pathExists(media.file_path ?? "")) ||
         this.config.TESTING.MOCK_FILES
@@ -164,36 +171,17 @@ export class MediaService {
           });
         }
       }
-      throw new InternalServerErrorException(
-        `Failed to download media from '${sourceUrl}'.`,
-        { cause: error },
-      );
+      throw new InternalServerErrorException("Failed to download media.", {
+        cause: error,
+      });
     }
   }
 
   private async fetchFromUrl(sourceUrl: string): Promise<Buffer> {
-    try {
-      const response = await fetch(sourceUrl, {
-        method: "GET",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-        },
-        signal: AbortSignal.timeout(30_000),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to download media from ${sourceUrl}: ${response.status} ${response.statusText}`,
-        );
-      }
-      return Buffer.from(await response.arrayBuffer());
-    } catch (error) {
-      this.logger.error(`Error downloading media from ${sourceUrl}`, error);
-      throw new Error(`Failed to download media from ${sourceUrl}`, {
-        cause: error,
-      });
-    }
+    return downloadPublicMedia(
+      sourceUrl,
+      this.config.MEDIA.MAX_SIZE || 64 * 1024 * 1024,
+    );
   }
 
   private async saveToFileSystem(
@@ -212,6 +200,7 @@ export class MediaService {
     // This prevents partial/corrupt files
     const tempPath = join(tmpdir(), `media-${randomUUID()}.tmp`);
     try {
+      path = await resolveStoragePath(this.config.VOLUMES.MEDIA, path, true);
       await writeFile(tempPath, mediaBuffer);
       await move(tempPath, path, { overwrite: true });
     } catch (error) {
@@ -238,11 +227,13 @@ export class MediaService {
       return;
     }
     try {
+      if (media.file_path)
+        await resolveStoragePath(this.config.VOLUMES.MEDIA, media.file_path);
       await this.mediaRepository.remove(media);
       await remove(media.file_path ?? "");
       this.logger.debug({
         message: "Media successfully deleted from filesystem and database.",
-        media,
+        media: logMedia(media),
       });
     } catch (error) {
       this.logger.error({
@@ -315,7 +306,12 @@ export class MediaService {
       return;
     }
 
-    await move(tempPath, finalPath, { overwrite: true });
+    const target = await resolveStoragePath(
+      this.config.VOLUMES.MEDIA,
+      finalPath,
+      true,
+    );
+    await move(tempPath, target, { overwrite: true });
     this.logger.debug({
       message: "Media successfully saved to filesystem.",
       path: finalPath,

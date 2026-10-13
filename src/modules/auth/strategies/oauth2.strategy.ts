@@ -4,9 +4,8 @@ import {
   Logger,
   UnauthorizedException,
 } from "@nestjs/common";
-import { JwtService } from "@nestjs/jwt";
 import { PassportStrategy } from "@nestjs/passport";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { type VerifiedCallback } from "passport-jwt";
 import { Strategy } from "passport-oauth2";
 import type { AppConfiguration } from "../../../configuration.js";
@@ -14,254 +13,177 @@ import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-conf
 import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { UsersService } from "../../users/users.service.js";
 import { type OidcUserInfo } from "../models/oidc-user-info.interface.js";
-import PassportUserProfile from "../models/passport-user-profile.interface.js";
 
 @Injectable()
 export class OAuth2Strategy extends PassportStrategy(Strategy, "oauth2", 6) {
   private readonly logger = new Logger(this.constructor.name);
-  private readonly configuration: AppConfiguration;
+  private readonly provider: string;
 
   constructor(
     private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
-    @InjectPlaystashConfig() config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly configuration: AppConfiguration,
   ) {
-    const { AUTH } = config;
+    const { OAUTH2 } = configuration.AUTH;
     if (
-      !AUTH.OAUTH2.AUTH_URL ||
-      !AUTH.OAUTH2.TOKEN_URL ||
-      !AUTH.OAUTH2.CALLBACK_URL ||
-      !AUTH.OAUTH2.CLIENT_ID ||
-      !AUTH.OAUTH2.CLIENT_SECRET
+      !OAUTH2.AUTH_URL ||
+      !OAUTH2.TOKEN_URL ||
+      !OAUTH2.CALLBACK_URL ||
+      !OAUTH2.USERINFO_URL ||
+      !OAUTH2.CLIENT_ID ||
+      !OAUTH2.CLIENT_SECRET
     ) {
       throw new BadRequestException(
-        "Failed to initialize OAuth2Strategy. Please configure all necessary options.",
+        "OAuth2 requires authorization, token, callback and UserInfo URLs, client ID and client secret.",
       );
+    }
+    for (const endpoint of [
+      OAUTH2.AUTH_URL,
+      OAUTH2.TOKEN_URL,
+      OAUTH2.USERINFO_URL,
+    ]) {
+      const url = new URL(endpoint);
+      if (
+        !["https:", "http:"].includes(url.protocol) ||
+        url.username ||
+        url.password
+      ) {
+        throw new BadRequestException(
+          "OAuth2 endpoints must be HTTP(S) URLs without embedded credentials.",
+        );
+      }
     }
     super({
       passReqToCallback: true,
-      authorizationURL: AUTH.OAUTH2.AUTH_URL,
-      tokenURL: AUTH.OAUTH2.TOKEN_URL,
-      clientID: AUTH.OAUTH2.CLIENT_ID,
-      clientSecret: AUTH.OAUTH2.CLIENT_SECRET,
-      callbackURL: AUTH.OAUTH2.CALLBACK_URL,
-      scope: AUTH.OAUTH2.SCOPES,
+      authorizationURL: OAUTH2.AUTH_URL,
+      tokenURL: OAUTH2.TOKEN_URL,
+      clientID: OAUTH2.CLIENT_ID,
+      clientSecret: OAUTH2.CLIENT_SECRET,
+      callbackURL: OAUTH2.CALLBACK_URL,
+      scope: OAUTH2.SCOPES,
       state: true,
     });
-    this.configuration = config;
+    this.provider = createHash("sha256")
+      .update(new URL(OAUTH2.USERINFO_URL).href)
+      .digest("hex");
   }
 
-  /**
-   * Optionally fetches user info from the OIDC UserInfo endpoint.
-   * Returns null if no endpoint is configured or the request fails.
-   */
-  private async fetchUserInfo(
-    accessToken: string,
-  ): Promise<Partial<PassportUserProfile>> {
-    const userInfoUrl = this.configuration.AUTH.OAUTH2.USERINFO_URL;
-    if (!userInfoUrl) {
-      return {};
-    }
+  private async fetchUserInfo(accessToken: string): Promise<OidcUserInfo> {
     try {
-      const response = await fetch(userInfoUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!response.ok) {
-        this.logger.warn(
-          `Failed to fetch user info: ${response.status} ${response.statusText}`,
-        );
-        return {};
+      const response = await fetch(
+        this.configuration.AUTH.OAUTH2.USERINFO_URL!,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+          },
+          redirect: "error",
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!response.ok || !response.body)
+        throw new Error("UserInfo unavailable");
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 65536) throw new Error("UserInfo exceeds size limit");
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
       }
-
-      const userInfo: OidcUserInfo = await response.json();
-
-      return this.convertOidcUserInfoToPassportProfile(userInfo);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to fetch user info: ${(error as Error).message}`,
-      );
-      return {};
-    }
-  }
-
-  private convertOidcUserInfoToPassportProfile(
-    oidcUserInfo: OidcUserInfo,
-  ): Partial<PassportUserProfile> {
-    if (!oidcUserInfo) return {};
-    return {
-      id: oidcUserInfo.sub,
-      birthdate: oidcUserInfo.birthdate,
-      preferred_username: oidcUserInfo.preferred_username,
-      displayName: oidcUserInfo.preferred_username,
-      name: {
-        givenName: oidcUserInfo.given_name,
-        familyName: oidcUserInfo.family_name,
-      },
-      emails: oidcUserInfo.email ? [{ value: oidcUserInfo.email }] : undefined,
-    };
-  }
-
-  /**
-   * Validates that the required fields are present.
-   * Throws an exception if any required fields are missing.
-   */
-  private validateProfile(profile: PassportUserProfile): PassportUserProfile {
-    const missingFields: string[] = [];
-    if (!profile.id) missingFields.push("sub");
-    if (!profile.preferred_username) missingFields.push("username");
-    if (this.configuration.USERS.REQUIRE_EMAIL && !profile.emails?.length)
-      missingFields.push("email");
-    if (this.configuration.USERS.REQUIRE_FIRST_NAME && !profile.name?.givenName)
-      missingFields.push("given_name");
-    if (this.configuration.USERS.REQUIRE_LAST_NAME && !profile.name?.familyName)
-      missingFields.push("family_name");
-
-    if (missingFields.length > 0) {
-      this.logger.error({
-        message: "Authentication Failed: Required fields are missing",
-        missingFields,
-        profile,
-      });
+      const info: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (!info || typeof info !== "object" || Array.isArray(info))
+        throw new Error("Invalid UserInfo");
+      const data = info as Record<string, unknown>;
+      if (
+        typeof data.sub !== "string" ||
+        !data.sub.trim() ||
+        data.sub.length > 255
+      )
+        throw new Error("Invalid subject");
+      for (const field of [
+        "preferred_username",
+        "email",
+        "given_name",
+        "family_name",
+        "birthdate",
+      ]) {
+        if (
+          data[field] != null &&
+          (typeof data[field] !== "string" ||
+            (data[field] as string).length > 255)
+        )
+          throw new Error("Invalid UserInfo field");
+      }
+      return data as unknown as OidcUserInfo;
+    } catch {
+      this.logger.warn("OAuth2 UserInfo verification failed.");
       throw new UnauthorizedException(
-        `Authentication Failed: Your identity provider did not provide all required fields to complete your registration. Missing fields: ${missingFields.join(", ")}.`,
+        "Authentication Failed: The identity provider did not return valid UserInfo.",
       );
     }
-    return profile;
   }
 
   async validate(
     req: { user: PlaystashUser },
     accessToken: string,
-    refreshToken: string,
-    params: any,
-    profile: any,
+    _refreshToken: string,
+    _params: unknown,
+    _profile: unknown,
     done: VerifiedCallback,
   ) {
-    this.logger.debug({
-      message: "Received OAuth2 callback.",
-      user: req.user,
-      token_endpoint_response: params,
-      profile,
-    });
-
-    if (!accessToken || !profile) {
-      this.logger.error({
-        message: "Authentication Failed: Missing access token or profile.",
-        user: req.user,
-        accessToken,
-        refreshToken,
-        passportProfile: profile,
-      });
+    if (!accessToken)
       throw new UnauthorizedException(
-        "Authentication Failed: Missing access token or profile from the identity provider.",
+        "Authentication Failed: Missing access token.",
+      );
+    // Decoding JWTs does not validate signatures. Only authenticated UserInfo supplies identity.
+    const info = await this.fetchUserInfo(accessToken);
+    let user = await this.usersService.findUserBySsoIdentity(
+      this.provider,
+      info.sub,
+    );
+    if (!user) {
+      const required = this.configuration.USERS;
+      if (
+        (required.REQUIRE_EMAIL && !info.email) ||
+        (required.REQUIRE_FIRST_NAME && !info.given_name) ||
+        (required.REQUIRE_LAST_NAME && !info.family_name)
+      ) {
+        throw new UnauthorizedException(
+          "Authentication Failed: Your identity provider did not supply the required registration fields.",
+        );
+      }
+      const username =
+        info.preferred_username && /^\w{2,32}$/.test(info.preferred_username)
+          ? info.preferred_username
+          : `PlayStashUser${randomBytes(8).toString("hex")}`;
+      const birthDate = info.birthdate ? new Date(info.birthdate) : undefined;
+      if (birthDate && !Number.isFinite(birthDate.getTime()))
+        throw new UnauthorizedException(
+          "Authentication Failed: Invalid birth date.",
+        );
+      // Collisions fail registration; local accounts are never implicitly linked.
+      user = await this.usersService.register(
+        {
+          username,
+          email: info.email,
+          first_name: info.given_name,
+          last_name: info.family_name,
+          password: randomBytes(24).toString("base64"),
+          birth_date: birthDate?.toISOString(),
+        },
+        { provider: this.provider, subject: info.sub },
       );
     }
-
-    // 1) Retrieve additional user info if available.
-
-    const profileFromAccessToken: Partial<PassportUserProfile> =
-      this.convertOidcUserInfoToPassportProfile(
-        this.jwtService.decode(accessToken),
-      );
-
-    const profileFromIdToken: Partial<PassportUserProfile> = params.id_token
-      ? this.convertOidcUserInfoToPassportProfile(
-          this.jwtService.decode(params.id_token),
-        )
-      : {};
-
-    const profileFromUserInfoEndpoint: Partial<PassportUserProfile> =
-      await this.fetchUserInfo(accessToken);
-
-    // 2) Merge the Passport profile with additional identity data from trusted sources.
-    // Priority order (low → high):
-    // 1. profile (lowest priority fallback)
-    // 2. profileFromAccessToken (API-level claims, not ideal for identity)
-    // 3. profileFromUserInfoEndpoint (fresh but unsigned)
-    // 4. profileFromIdToken (signed, trusted, OIDC-compliant)
-
-    const mergedProfile: PassportUserProfile = {
-      // Merge in order of increasing trust — later sources override earlier ones
-      ...profile, // Least trusted
-      ...profileFromAccessToken, // Semi-trusted
-      ...profileFromUserInfoEndpoint, // Fresh, but not signed
-      ...profileFromIdToken, // Most trusted (signed token)
-
-      // Prioritize email explicitly using nullish coalescing
-      emails:
-        profileFromIdToken.emails ??
-        profileFromUserInfoEndpoint.emails ??
-        profileFromAccessToken.emails ??
-        profile.emails,
-
-      // Merge nested `name` field in the same priority order
-      name: {
-        ...profile.name,
-        ...profileFromAccessToken.name,
-        ...profileFromUserInfoEndpoint.name,
-        ...profileFromIdToken.name,
-      },
-    };
-
-    if (!mergedProfile.preferred_username) {
-      // This username is a fallback default and can be overwritten by later spreads
-      mergedProfile.preferred_username = `PlayStashUser${Math.floor(1000 + Math.random() * 9000)}`;
-      this.logger.warn({
-        message:
-          "Generated a random username for the user, because none was provided by the identity provider.",
-        username: mergedProfile.preferred_username,
-      });
-    }
-
-    this.logger.debug({
-      message: "Merged all available profile information.",
-      "1_profile": profile,
-      "2_from_access_token": profileFromAccessToken,
-      "3_from_user_info_endpoint": profileFromUserInfoEndpoint,
-      "4_from_id_token": profileFromIdToken,
-      mergedProfile,
+    await this.usersService.findUserForAuthOrFail({ id: user.id });
+    user = await this.usersService.findOneByUserIdOrFail(user.id, {
+      loadRelations: false,
     });
-
-    // 3) Validate the profile
-    const validatedProfile: PassportUserProfile =
-      this.validateProfile(mergedProfile);
-
-    // 4) Look up the user in the database or register a new user.
-    let user = await this.usersService
-      .findUserForAuthOrFail({
-        username: validatedProfile.preferred_username,
-        email: validatedProfile.emails?.[0]?.value,
-        idp_id: validatedProfile.id,
-      })
-      .then((user) => this.usersService.findOneByUsernameOrFail(user.username))
-      .catch(() => null);
-
-    if (user) {
-      this.logger.debug({
-        message: "OAuth2 user found in database.",
-        profile: validatedProfile,
-      });
-    } else {
-      this.logger.debug({
-        message: "OAuth2 user not found in database. Registering new user...",
-        profile: validatedProfile,
-      });
-
-      const birth_date = validatedProfile.birthdate
-        ? new Date(validatedProfile.birthdate)?.toISOString()
-        : null;
-
-      user = await this.usersService.register({
-        username: validatedProfile.preferred_username ?? "",
-        email: validatedProfile.emails?.[0]?.value,
-        first_name: validatedProfile.name?.givenName,
-        last_name: validatedProfile.name?.familyName,
-        password: randomBytes(24).toString("base64").slice(0, 32),
-        birth_date: birth_date ?? undefined,
-        // TODO: We could also store the idp_id in the database to make it possible to find users if they changed their email address.
-      });
-    }
-
     req.user = user;
     done(null, user);
   }

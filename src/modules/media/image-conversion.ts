@@ -31,6 +31,39 @@ export async function normalizeMediaImage(
       "No supported image conversion output is configured.",
     );
   try {
+    const textHeader = header.toString("latin1").replace(/\0/g, "").trimStart();
+    if (
+      (textHeader.startsWith("<") && header.includes(0)) ||
+      ["fffe", "feff", "0000feff"].some((bom) =>
+        header.toString("hex").startsWith(bom),
+      )
+    )
+      throw new Error("SVG input must use UTF-8 encoding.");
+    // Reject XML resources before handing SVG to a native decoder, including
+    // XML prologues that extend beyond the header used for MIME detection.
+    if (/^\uFEFF?\s*</.test(header.toString("utf8"))) {
+      const svg = (
+        typeof input === "string" ? await fsExtra.readFile(input) : input
+      )
+        .toString("utf8")
+        .replace(
+          /&#(?:x([0-9a-f]{1,8})|([0-9]{1,10}));/gi,
+          (
+            _match,
+            hexadecimal: string | undefined,
+            decimal: string | undefined,
+          ) =>
+            String.fromCodePoint(
+              Number.parseInt(hexadecimal ?? decimal!, hexadecimal ? 16 : 10),
+            ),
+        );
+      if (
+        /\\|<!DOCTYPE|<!ENTITY|<\s*(?:script|foreignObject)\b|\bon\w+\s*=|\b(?:href|xlink:href)\s*=|@import|url\s*\(/i.test(
+          svg,
+        )
+      )
+        throw new Error("SVG contains active content or external resources.");
+    }
     const decoder = sharp(input, {
       limitInputPixels: 16_777_216,
       pages: 1,
@@ -43,20 +76,6 @@ export async function normalizeMediaImage(
       )
     ) {
       throw new Error("Not a supported image.");
-    }
-    if (metadata.format === "svg") {
-      const svg = (
-        typeof input === "string" ? await fsExtra.readFile(input) : input
-      ).toString("utf8");
-      // SVG is only used as raster input; reject entities, active content and
-      // external resources rather than saving or serving executable XML.
-      if (
-        /<!DOCTYPE|<!ENTITY|<\s*(?:script|foreignObject)\b|\bon\w+\s*=|\b(?:href|xlink:href)\s*=|@import|url\s*\(/i.test(
-          svg,
-        )
-      ) {
-        throw new Error("SVG contains active content or external resources.");
-      }
     }
     const converted = await decoder
       .rotate()

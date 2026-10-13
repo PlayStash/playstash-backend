@@ -1,9 +1,7 @@
 import * as fsExtraModule from "fs-extra";
-import { extractFull } from "node-7z";
-import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import type { Mock } from "vitest";
 import configurationModule from "../../configuration.js";
+import { extractFrontendZip } from "./safe-zip.js";
 import { WebUIService } from "./web-ui.service.js";
 
 vi.mock("../../configuration.js", () => ({
@@ -15,14 +13,9 @@ vi.mock("../../configuration.js", () => ({
   },
 }));
 
-vi.mock("node-7z", async (importOriginal) => {
-  const actual = (await importOriginal()) as any;
-  const overrides = { extractFull: vi.fn() };
-  return {
-    ...actual,
-    ...overrides,
-    default: { ...(actual as any).default, ...overrides },
-  };
+vi.mock("./safe-zip.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./safe-zip.js")>();
+  return { ...actual, extractFrontendZip: vi.fn() };
 });
 
 vi.mock("fs-extra", async (importOriginal) => {
@@ -104,7 +97,7 @@ describe("WebUIService", () => {
         .mockResolvedValueOnce({
           status: 302,
           headers: new Headers({
-            location: "https://assets.example.com/bundle.zip",
+            location: "https://release-assets.githubusercontent.com/bundle.zip",
           }),
           body: null,
         } as Response)
@@ -119,6 +112,45 @@ describe("WebUIService", () => {
         Authorization: "Bearer test-secret",
       });
       expect(fetchSpy.mock.calls[1][1]?.headers).toBeUndefined();
+    });
+    it.each([
+      "https://127.0.0.1/private",
+      "https://github.com.evil.test/bundle.zip",
+      "http://github.com/bundle.zip",
+      "https://secret@github.com/bundle.zip",
+    ])(
+      "rejects untrusted frontend redirect %s before fetching it",
+      async (location) => {
+        const cancel = vi.fn(async () => {});
+        const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce({
+          status: 302,
+          headers: new Headers({ location }),
+          body: { cancel },
+        } as unknown as Response);
+        await expect(
+          (service as any).downloadFile(
+            "https://github.com/PlayStash/playstash-frontend/bundle.zip",
+            "/tmp/test.zip",
+          ),
+        ).rejects.toThrow("approved GitHub HTTPS host");
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      },
+    );
+    it("rejects an oversized frontend body before writing the cache", async () => {
+      const cancel = vi.fn(async () => {});
+      vi.spyOn(global, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": String(257 * 1024 * 1024) }),
+        body: { cancel },
+      } as unknown as Response);
+      await expect(
+        (service as any).downloadFile(
+          "https://github.com/PlayStash/playstash-frontend/bundle.zip",
+          "/tmp/test.zip",
+        ),
+      ).rejects.toThrow("256 MiB");
+      expect(cancel).toHaveBeenCalledOnce();
     });
 
     it("resolves private release assets through their authenticated API IDs", async () => {
@@ -358,31 +390,27 @@ describe("WebUIService", () => {
       await (service as any).ensureFrontendCached("16.3.0");
 
       expect(downloadSpy).toHaveBeenCalled();
-      expect(cleanSpy).toHaveBeenCalled();
+      expect(cleanSpy).not.toHaveBeenCalled();
       expect(extractSpy).toHaveBeenCalled();
       expect(fs.remove).toHaveBeenCalled();
       expect(writeVersionSpy).toHaveBeenCalledWith("16.3.0");
     });
 
-    it("should resolve zip extraction when 7z emits end", async () => {
-      (extractFull as Mock).mockImplementation(() => {
-        const emitter = new EventEmitter();
-        setImmediate(() => emitter.emit("end"));
-        return emitter;
-      });
-
+    it("extracts a validated frontend ZIP", async () => {
+      vi.mocked(extractFrontendZip).mockResolvedValue(undefined);
       await expect(
         (service as any).extractZip("/tmp/test.zip"),
       ).resolves.toBeUndefined();
+      expect(extractFrontendZip).toHaveBeenCalledWith(
+        "/tmp/test.zip",
+        expect.any(String),
+      );
     });
 
-    it("should reject zip extraction when 7z emits error", async () => {
-      (extractFull as Mock).mockImplementation(() => {
-        const emitter = new EventEmitter();
-        setImmediate(() => emitter.emit("error", new Error("extract failed")));
-        return emitter;
-      });
-
+    it("propagates invalid ZIP rejection", async () => {
+      vi.mocked(extractFrontendZip).mockRejectedValue(
+        new Error("extract failed"),
+      );
       await expect(
         (service as any).extractZip("/tmp/test.zip"),
       ).rejects.toThrow("extract failed");
@@ -396,7 +424,7 @@ describe("WebUIService", () => {
 
       await expect(
         (service as any).downloadFile(
-          "https://example.com/a.zip",
+          "https://github.com/PlayStash/playstash-frontend/a.zip",
           "/tmp/a.zip",
         ),
       ).rejects.toThrow("Failed to download file: Not Found");
@@ -410,7 +438,7 @@ describe("WebUIService", () => {
 
       await expect(
         (service as any).downloadFile(
-          "https://example.com/a.zip",
+          "https://github.com/PlayStash/playstash-frontend/a.zip",
           "/tmp/a.zip",
         ),
       ).rejects.toThrow("Response body is empty");

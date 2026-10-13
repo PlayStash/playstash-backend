@@ -13,7 +13,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { hash } from "bcrypt";
 import lodash from "lodash";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   EntityNotFoundError,
   type FindManyOptions,
@@ -21,6 +21,7 @@ import {
   ILike,
   IsNull,
   Not,
+  Raw,
   Repository,
 } from "typeorm";
 import type { AppConfiguration } from "../../configuration.js";
@@ -175,8 +176,17 @@ export class UsersService implements OnApplicationBootstrap {
         : undefined;
 
     const where = options.loadDeletedEntities
-      ? { username: ILike(username) }
-      : { username: ILike(username), deleted_at: IsNull() };
+      ? {
+          username: Raw((alias) => `LOWER(${alias}) = LOWER(:exactUsername)`, {
+            exactUsername: username,
+          }),
+        }
+      : {
+          username: Raw((alias) => `LOWER(${alias}) = LOWER(:exactUsername)`, {
+            exactUsername: username,
+          }),
+          deleted_at: IsNull(),
+        };
 
     const user = await this.userRepository
       .findOneOrFail({
@@ -241,17 +251,54 @@ export class UsersService implements OnApplicationBootstrap {
     return user;
   }
 
+  /** Only a provider-specific immutable subject may identify an SSO account. */
+  public async findUserBySsoIdentity(
+    provider: string,
+    subject: string,
+  ): Promise<PlaystashUser | null> {
+    return this.userRepository.findOne({
+      where: { sso_provider: provider, sso_subject: subject },
+      withDeleted: true,
+      loadEagerRelations: false,
+    });
+  }
+
   /** Register a new user */
-  public async register(dto: RegisterUserDto): Promise<PlaystashUser> {
+  public async register(
+    dto: RegisterUserDto,
+    sso?: { provider: string; subject: string },
+  ): Promise<PlaystashUser> {
     await this.throwIfAlreadyExists(dto.username, dto.email);
+    const isConfiguredAdministrator =
+      this.config.SERVER.ADMIN_USERNAME != null &&
+      dto.username.toLowerCase() ===
+        this.config.SERVER.ADMIN_USERNAME.toLowerCase();
+    if (
+      isConfiguredAdministrator &&
+      (sso ||
+        !this.config.SERVER.ADMIN_PASSWORD ||
+        !timingSafeEqual(
+          createHash("sha256").update(dto.password).digest(),
+          createHash("sha256")
+            .update(this.config.SERVER.ADMIN_PASSWORD)
+            .digest(),
+        ))
+    ) {
+      throw new ForbiddenException(
+        "This username is reserved for the configured administrator.",
+      );
+    }
     const isFirstUser = (await this.userRepository.count()) === 0;
     const isAdministrator =
-      dto.username === this.config.SERVER.ADMIN_USERNAME || isFirstUser;
+      isConfiguredAdministrator ||
+      (isFirstUser && !this.config.SERVER.ADMIN_USERNAME);
     const isActivated =
       this.config.SERVER.ACCOUNT_ACTIVATION_DISABLED || isAdministrator;
 
     const user = new PlaystashUser();
     user.username = dto.username;
+    user.sso_provider = sso?.provider;
+    user.sso_subject = sso?.subject;
     user.password = await hash(dto.password, 10);
     user.api_key = randomBytes(32).toString("hex");
     user.first_name = dto.first_name || undefined;
@@ -266,7 +313,7 @@ export class UsersService implements OnApplicationBootstrap {
     registeredUser.api_key = "**REDACTED**";
     this.logger.log({
       message: `User has been registered.`,
-      user: registeredUser,
+      userId: registeredUser.id,
     });
     return registeredUser;
   }
@@ -276,18 +323,25 @@ export class UsersService implements OnApplicationBootstrap {
     id?: number;
     username?: string;
     email?: string;
-    idp_id?: string; // TODO: Could Implement search for idp_id
   }): Promise<PlaystashUser> {
     const where: FindOptionsWhere<PlaystashUser>[] = [];
 
     if (searchBy.id != null) {
       where.push({ id: searchBy.id });
     }
-    if (searchBy.username != null) {
-      where.push({ username: ILike(searchBy.username) });
+    if (searchBy.id == null && searchBy.username != null) {
+      where.push({
+        username: Raw((alias) => `LOWER(${alias}) = LOWER(:exactUsername)`, {
+          exactUsername: searchBy.username,
+        }),
+      });
     }
-    if (searchBy.email != null) {
-      where.push({ email: ILike(searchBy.email) });
+    if (searchBy.id == null && searchBy.email != null) {
+      where.push({
+        email: Raw((alias) => `LOWER(${alias}) = LOWER(:exactEmail)`, {
+          exactEmail: searchBy.email,
+        }),
+      });
     }
 
     if (where.length === 0) {
@@ -300,6 +354,7 @@ export class UsersService implements OnApplicationBootstrap {
       .findOneOrFail({
         where,
         select: toFindOptionsSelect<PlaystashUser>([
+          "id",
           "username",
           "email",
           "password",
@@ -340,6 +395,8 @@ export class UsersService implements OnApplicationBootstrap {
   public cleanConfidentialUser(user: PlaystashUser): PlaystashUser {
     delete (user as Partial<PlaystashUser>).password;
     delete user.api_key;
+    delete user.sso_provider;
+    delete user.sso_subject;
     return user;
   }
 
@@ -407,7 +464,7 @@ export class UsersService implements OnApplicationBootstrap {
     }
 
     if (dto.password != null) {
-      logUpdate("password", user.password, "**REDACTED**");
+      logUpdate("password", "**REDACTED**", "**REDACTED**");
       user.password = await hash(dto.password, 10);
     }
 
@@ -663,11 +720,19 @@ export class UsersService implements OnApplicationBootstrap {
 
     const where = [];
     if (username) {
-      where.push({ username: ILike(username) });
+      where.push({
+        username: Raw((alias) => `LOWER(${alias}) = LOWER(:exactUsername)`, {
+          exactUsername: username,
+        }),
+      });
     }
 
     if (email) {
-      where.push({ email: ILike(email) });
+      where.push({
+        email: Raw((alias) => `LOWER(${alias}) = LOWER(:exactEmail)`, {
+          exactEmail: email,
+        }),
+      });
     }
 
     const existingUser = await this.userRepository.findOne({

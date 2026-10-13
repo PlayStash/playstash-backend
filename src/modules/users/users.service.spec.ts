@@ -248,7 +248,16 @@ describe("UsersService", () => {
       });
 
       const dto = { username: "admin", password: "password123" };
-      const result = await service.register(dto as any);
+      const initial = new UsersService(
+        userRepository,
+        mediaService,
+        gamesService,
+        {
+          ...configuration,
+          SERVER: { ...configuration.SERVER, ADMIN_USERNAME: undefined },
+        } as any,
+      );
+      const result = await initial.register(dto as any);
       expect(result.role).toBe(Role.ADMIN);
       expect(result.activated).toBe(true);
     });
@@ -260,6 +269,74 @@ describe("UsersService", () => {
       await expect(service.register(dto as any)).rejects.toThrow(
         ForbiddenException,
       );
+    });
+
+    it("reserves configured admin names and never grants an unrelated first user admin", async () => {
+      userRepository.findOne.mockResolvedValue(null);
+      userRepository.count.mockResolvedValue(0);
+      userRepository.save.mockImplementation(
+        async (user) =>
+          ({
+            ...user,
+            id: 42,
+          }) as any,
+      );
+      const secured = new UsersService(
+        userRepository,
+        mediaService,
+        gamesService,
+        {
+          ...configuration,
+          SERVER: {
+            ...configuration.SERVER,
+            ADMIN_USERNAME: "operator",
+            ADMIN_PASSWORD: "operator-test-password",
+          },
+        } as any,
+      );
+      await expect(
+        secured.register({
+          username: "OPERATOR",
+          password: "attacker-password",
+        }),
+      ).rejects.toThrow("reserved");
+      expect(userRepository.save).not.toHaveBeenCalled();
+      const user = await secured.register({
+        username: "ordinary",
+        password: "test-password",
+      });
+      expect(user.role).toBe(Role.USER);
+      const admin = await secured.register({
+        username: "operator",
+        password: "operator-test-password",
+      });
+      expect(admin.role).toBe(Role.ADMIN);
+      await expect(
+        secured.register(
+          { username: "operator", password: "operator-test-password" },
+          { provider: "a".repeat(64), subject: "sso-attacker" },
+        ),
+      ).rejects.toThrow("reserved");
+    });
+
+    it("does not let an unprotected configured admin name be publicly claimed", async () => {
+      userRepository.findOne.mockResolvedValue(null);
+      const secured = new UsersService(
+        userRepository,
+        mediaService,
+        gamesService,
+        {
+          ...configuration,
+          SERVER: {
+            ...configuration.SERVER,
+            ADMIN_USERNAME: "operator",
+            ADMIN_PASSWORD: undefined,
+          },
+        } as any,
+      );
+      await expect(
+        secured.register({ username: "operator", password: "test-password" }),
+      ).rejects.toThrow("reserved");
     });
   });
 

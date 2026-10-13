@@ -8,6 +8,7 @@ import {
   PayloadTooLargeException,
 } from "@nestjs/common";
 import { type Request, type Response } from "express";
+import { logPath } from "../security-log.js";
 
 @Catch()
 export class LoggingExceptionFilter implements ExceptionFilter {
@@ -29,14 +30,14 @@ export class LoggingExceptionFilter implements ExceptionFilter {
       if (httpStatusCode >= 400 && httpStatusCode < 500) {
         this.logger.warn({
           message: `${httpException.name} occurred.`,
-          path: request.url,
+          path: logPath(request.url),
           response: httpException.getResponse(),
           error,
         });
       } else {
         this.logger.error({
           message: `${httpException.name} occurred.`,
-          path: request.url,
+          path: logPath(request.url),
           response: httpException.getResponse(),
           error,
         });
@@ -48,7 +49,7 @@ export class LoggingExceptionFilter implements ExceptionFilter {
     // All other unhandled Exceptions
     this.logger.error({
       message: `Unhandled ${error.name} occurred.`,
-      path: request.url,
+      path: logPath(request.url),
       error,
     });
     response.status(500).json({

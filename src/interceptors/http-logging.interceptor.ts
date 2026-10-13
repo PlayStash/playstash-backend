@@ -11,6 +11,7 @@ import { tap } from "rxjs/operators";
 
 import type { AppConfiguration } from "../configuration.js";
 import { InjectPlaystashConfig } from "../decorators/inject-playstash-config.decorator.js";
+import { logPath, redactLogValue } from "../security-log.js";
 
 @Injectable()
 export class HttpLoggingInterceptor implements NestInterceptor {
@@ -40,11 +41,10 @@ export class HttpLoggingInterceptor implements NestInterceptor {
       context: "HTTP Traffic",
       direction: "incoming",
       method: request.method,
-      url: request.url,
+      url: logPath(request.url),
       headers: this.sanitizeHeaders(request.headers),
       body: this.sanitizeBody(request.body),
-      query: request.query,
-      params: request.params,
+      params: redactLogValue(request.params),
       ip: request.ip,
     };
 
@@ -59,7 +59,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             context: "HTTP Traffic",
             direction: "outgoing",
             method: request.method,
-            url: request.url,
+            url: logPath(request.url),
             statusCode: response.statusCode,
             headers: this.sanitizeHeaders(response.getHeaders()),
             body: this.sanitizeBody(responseBody),
@@ -73,7 +73,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             context: "HTTP Traffic",
             direction: "outgoing",
             method: request.method,
-            url: request.url,
+            url: logPath(request.url),
             statusCode: error.status || 500,
             error: error.message,
             durationMs: Date.now() - startTime,
@@ -106,29 +106,6 @@ export class HttpLoggingInterceptor implements NestInterceptor {
   }
 
   private sanitizeBody(body: unknown): unknown {
-    if (!body || typeof body !== "object") {
-      return body;
-    }
-
-    const sanitized = { ...body } as Record<string, unknown>;
-    const sensitiveFields = [
-      "password",
-      "secret",
-      "token",
-      "apiKey",
-      "api_key",
-      "accessToken",
-      "access_token",
-      "refreshToken",
-      "refresh_token",
-    ];
-
-    for (const field of sensitiveFields) {
-      if (sanitized[field]) {
-        sanitized[field] = "**REDACTED**";
-      }
-    }
-
-    return sanitized;
+    return typeof body === "string" ? "**OMITTED**" : redactLogValue(body);
   }
 }

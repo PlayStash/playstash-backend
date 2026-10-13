@@ -10,6 +10,7 @@ import { type Metadata } from "./modules/metadata/models/metadata.interface.js";
 import { type MetadataProvider } from "./modules/metadata/providers/abstract.metadata-provider.service.js";
 import { Progress } from "./modules/progresses/progress.entity.js";
 import { PlaystashUser } from "./modules/users/playstash-user.entity.js";
+import { redactLogValue } from "./security-log.js";
 
 const transports: winston.transport[] = [];
 
@@ -48,17 +49,23 @@ if (
   );
 }
 
-const logger = WinstonModule.createLogger({
-  exitOnError: false,
-  transports,
-  handleExceptions: true,
-  format: winston.format.combine(
+/** Redact after splat expansion and before either JSON or console inspection. */
+export function createBackendLogFormat() {
+  return winston.format.combine(
     winston.format.timestamp(),
     winston.format.ms(),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
+    winston.format((info) => redactLogValue(info) as typeof info)(),
     winston.format.json(),
-  ),
+  );
+}
+
+const logger = WinstonModule.createLogger({
+  exitOnError: false,
+  transports,
+  handleExceptions: true,
+  format: createBackendLogFormat(),
 });
 
 const stream = {
@@ -120,7 +127,6 @@ function logMetadataProvider(provider: MetadataProvider) {
 function logMedia(media: Media) {
   return {
     id: media?.id,
-    source_url: media?.source_url,
     file_path: media?.file_path,
     type: media?.type,
     uploader: logPlaystashUser(media?.uploader),
@@ -129,11 +135,11 @@ function logMedia(media: Media) {
 
 export default logger;
 export {
-  logPlaystashGame,
-  logPlaystashUser,
   logMedia,
   logMetadata,
   logMetadataProvider,
+  logPlaystashGame,
+  logPlaystashUser,
   logProgress,
   stream,
 };

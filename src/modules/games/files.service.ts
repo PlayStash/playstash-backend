@@ -16,7 +16,7 @@ import lodash from "lodash";
 import node7z from "node-7z";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readdir as readDirectory, realpath } from "node:fs/promises";
+import { readdir as readDirectory } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path, { basename } from "node:path";
 import { type Readable } from "node:stream";
@@ -40,6 +40,7 @@ const { add, list } = node7z;
 
 import { Cron, SchedulerRegistry } from "@nestjs/schedule";
 import configuration from "../../configuration.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 import globals, { toFindOptionsRelations } from "../../globals.js";
 import { logPlaystashGame } from "../../logging.js";
 import { discardStreamedUpload } from "../../uploads/streamed-upload.js";
@@ -507,7 +508,12 @@ export class FilesService implements OnApplicationBootstrap {
     const existingVersionPaths: string[] = [];
     for (const version of versionsToDelete) {
       if (await pathExists(version.file_path)) {
-        existingVersionPaths.push(version.file_path);
+        existingVersionPaths.push(
+          await resolveStoragePath(
+            configuration.VOLUMES.FILES,
+            version.file_path,
+          ),
+        );
       }
     }
 
@@ -528,19 +534,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     for (const filePath of existingVersionPaths) {
       if ((await stat(filePath)).isDirectory?.()) {
-        const root = await realpath(configuration.VOLUMES.FILES);
-        const target = await realpath(filePath);
-        const relative = path.relative(root, target);
-        if (
-          !relative ||
-          relative === ".." ||
-          relative.startsWith(`..${path.sep}`) ||
-          path.isAbsolute(relative)
-        )
-          throw new BadRequestException(
-            "Refusing to delete a directory outside the game library.",
-          );
-        await rm(target, { recursive: true });
+        await rm(filePath, { recursive: true });
       } else await rm(filePath);
     }
 
@@ -1768,6 +1762,10 @@ export class FilesService implements OnApplicationBootstrap {
       });
     }
 
+    fileDownloadPath = await resolveStoragePath(
+      configuration.VOLUMES.FILES,
+      fileDownloadPath,
+    );
     // The persisted version can be a directory even before the index has warmed up.
     const sourceInfo = await stat(fileDownloadPath);
     // If the file format is not supported, create an archive and use it for download.

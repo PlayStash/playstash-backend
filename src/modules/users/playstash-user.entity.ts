@@ -19,7 +19,16 @@ import { Progress } from "../progresses/progress.entity.js";
 import { Role } from "./models/role.enum.js";
 
 @Entity()
+@Index("IDX_USER_SSO_IDENTITY", ["sso_provider", "sso_subject"], {
+  unique: true,
+})
 export class PlaystashUser extends DatabaseEntity {
+  @Column({ nullable: true, select: false, length: 64 })
+  sso_provider?: string;
+
+  @Column({ nullable: true, select: false, length: 255 })
+  sso_subject?: string;
+
   @Index({ unique: true })
   @Column({ unique: true })
   @ApiProperty({ example: "JohnDoe", description: "username of the user" })

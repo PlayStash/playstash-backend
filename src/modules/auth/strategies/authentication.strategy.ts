@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import type { AppConfiguration } from "../../../configuration.js";
@@ -21,14 +21,14 @@ export class AuthenticationStrategy extends PassportStrategy(Strategy, "auth") {
   }
 
   async validate(dto: { payload: PlaystashJwtPayload }) {
-    return await this.usersService.findOneByUsernameOrFail(
-      (
-        await this.usersService.findUserForAuthOrFail({
-          id: Number(dto.payload?.sub),
-          username: dto.payload?.preferred_username,
-          email: dto.payload?.email,
-        })
-      ).username,
-    );
+    const id = Number(dto.payload?.sub);
+    if (!Number.isSafeInteger(id) || id <= 0)
+      throw new UnauthorizedException(
+        "Authentication Failed: Invalid token subject.",
+      );
+    await this.usersService.findUserForAuthOrFail({ id });
+    return this.usersService.findOneByUserIdOrFail(id, {
+      loadRelations: false,
+    });
   }
 }

@@ -9,6 +9,7 @@ import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import configuration from "../../configuration.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 import {
   createDownloadRateProvider,
   DynamicDownloadThrottle,
@@ -38,8 +39,12 @@ export class PackagesService {
     });
     if (!game.file_path)
       throw new NotFoundException("The game has no available package.");
-    const info = await stat(game.file_path);
-    return info.isDirectory() ? game.file_path : path.dirname(game.file_path);
+    const filename = await resolveStoragePath(
+      configuration.VOLUMES.FILES,
+      game.file_path,
+    );
+    const info = await stat(filename);
+    return info.isDirectory() ? filename : path.dirname(filename);
   }
 
   async describe(

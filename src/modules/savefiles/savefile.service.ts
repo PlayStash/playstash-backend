@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import path, { basename, dirname } from "node:path";
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 import {
   discardStreamedUpload,
   readFileHeader,
@@ -21,7 +22,8 @@ import {
 import { GamesService } from "../games/games.service.js";
 import { UsersService } from "../users/users.service.js";
 import { SavefileDto } from "./models/savefile.dto.js";
-const { createReadStream, ensureDir, move, readdir, remove, stat } = fsExtra;
+const { createReadStream, ensureDir, lstat, move, readdir, remove, stat } =
+  fsExtra;
 
 @Injectable()
 export class SavefileService {
@@ -306,11 +308,26 @@ export class SavefileService {
         });
         return [];
       }
-      const saveDir = path.dirname(this.generateNewPath(userId, gameId));
+      const saveDir = await resolveStoragePath(
+        this.config.VOLUMES.SAVEFILES,
+        path.dirname(this.generateNewPath(userId, gameId)),
+      );
       const files = await readdir(saveDir);
-      const paths = files
+      const candidates = files
         .filter((file) => file.endsWith(".zip"))
-        .map((file) => path.join(saveDir, file))
+        .map((file) => path.join(saveDir, file));
+      const paths = (
+        await Promise.all(
+          candidates.map(async (candidate) => {
+            const target = await resolveStoragePath(
+              this.config.VOLUMES.SAVEFILES,
+              candidate,
+            );
+            return (await lstat(target)).isFile() ? target : undefined;
+          }),
+        )
+      )
+        .filter((candidate): candidate is string => !!candidate)
         .sort((a, b) => {
           return (
             Number.parseInt(path.basename(b, ".zip"), 10) -
@@ -353,8 +370,13 @@ export class SavefileService {
       });
       return;
     }
-    await ensureDir(dirname(path));
-    await move(tempPath, path, { overwrite: true });
+    const target = await resolveStoragePath(
+      this.config.VOLUMES.SAVEFILES,
+      path,
+      true,
+    );
+    await ensureDir(dirname(target));
+    await move(tempPath, target, { overwrite: true });
     this.logger.debug({
       message: "Savefile successfully saved to filesystem.",
       path,

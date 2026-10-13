@@ -51,6 +51,9 @@ describe("image conversion", () => {
     "<script>alert(1)</script>",
     '<image href="http://127.0.0.1/image"/>',
     '<rect onclick="doSomething()"/>',
+    '<rect style="fill:&#x75;rl(file:///private/picture.png)"/>',
+    "<style>.image { fill: u\\72l(file:///private/picture.png); }</style>",
+    '<!DOCTYPE svg [<!ENTITY secret SYSTEM "file:///etc/passwd">]><text>&secret;</text>',
   ])("rejects active SVG content %s", async (content) => {
     const input = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">${content}</svg>`,
@@ -58,6 +61,20 @@ describe("image conversion", () => {
     await expect(normalizeMediaImage(input, formats)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+  it("rejects external XML resources before invoking the image decoder", async () => {
+    const metadata = vi.spyOn(sharp.prototype, "metadata");
+    try {
+      const input = Buffer.from(
+        `<?xml version="1.0"?>${" ".repeat(1024)}<svg xmlns="http://www.w3.org/2000/svg"><image href="http://169.254.169.254/token"/></svg>`,
+      );
+      await expect(normalizeMediaImage(input, formats)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(metadata).not.toHaveBeenCalled();
+    } finally {
+      metadata.mockRestore();
+    }
   });
   it("rejects arbitrary bytes and oversized dimensions", async () => {
     await expect(

@@ -65,7 +65,7 @@ export class OAuth2Controller {
   ) {
     this.logger.log({
       message: "User logged in via oauth2.",
-      user: request.user,
+      userId: request.user.id,
     });
 
     // Get token data
@@ -123,9 +123,9 @@ export class OAuth2Controller {
         // Ignore and fall through to the redirect below.
       }
       var target = returnOrigin || window.location.origin;
-      var query = "?access_token=" + encodeURIComponent(handoff.access_token || "") +
+      var fragment = "#access_token=" + encodeURIComponent(handoff.access_token || "") +
         (handoff.refresh_token ? "&refresh_token=" + encodeURIComponent(handoff.refresh_token) : "");
-      window.location.replace(target + "/" + query);
+      window.location.replace(target + "/" + fragment);
     })();
   </script>
 </body>

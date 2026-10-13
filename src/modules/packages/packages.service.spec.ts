@@ -1,16 +1,26 @@
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import configuration from "../../configuration.js";
 import { PackagesService } from "./packages.service.js";
 
 describe("authorized package assets", () => {
   let root: string;
   let service: PackagesService;
+  const originalVolume = configuration.VOLUMES.FILES;
   const user = { id: 3, username: "reader" } as any;
   const games = { findOneByGameIdOrFail: vi.fn() };
   const users = { findUserAgeByUsername: vi.fn().mockResolvedValue(18) };
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), "playstash-assets-test-"));
+    Object.assign(configuration.VOLUMES, { FILES: root });
     await mkdir(path.join(root, "Extras"));
     await mkdir(path.join(root, "Addons"));
     await writeFile(path.join(root, "game.zip"), "archive");
@@ -22,7 +32,41 @@ describe("authorized package assets", () => {
     service = new PackagesService(games as any, users as any);
   });
   afterEach(async () => {
+    Object.assign(configuration.VOLUMES, { FILES: originalVolume });
     await rm(root, { recursive: true, force: true });
+  });
+  it("refuses a package root reached through a filesystem junction", async () => {
+    const privateGame = path.join(root, "private-game");
+    await mkdir(privateGame);
+    await writeFile(path.join(privateGame, "game.zip"), "private content");
+    await symlink(
+      privateGame,
+      path.join(root, "public-game"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    games.findOneByGameIdOrFail.mockResolvedValue({
+      id: 8,
+      file_path: path.join(root, "public-game", "game.zip"),
+    });
+    await expect(service.describe(8, user)).rejects.toThrow("symbolic links");
+  });
+  it("rejects a manifest extra that traverses a nested junction", async () => {
+    const privateGame = path.join(root, "private-game");
+    await mkdir(privateGame);
+    await writeFile(path.join(privateGame, "secret.pdf"), "private content");
+    await symlink(
+      privateGame,
+      path.join(root, "Extras", "linked"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await writeFile(
+      path.join(root, "playstash-package.json"),
+      JSON.stringify({
+        schema_version: 1,
+        extras: [{ path: "Extras/linked/secret.pdf" }],
+      }),
+    );
+    await expect(service.describe(8, user)).rejects.toThrow("symbolic links");
   });
   it("discovers extras/addons and applies game authorization before listing", async () => {
     const descriptor = await service.describe(8, user);

@@ -3,11 +3,12 @@ import bytes from "bytes";
 import * as dotenv from "dotenv";
 import fsExtra from "fs-extra";
 import lodash from "lodash";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import packageJson from "../package.json" with { type: "json" };
+import { createAuthSeed } from "./auth-seed.js";
 import globals from "./globals.js";
 import { createDownloadRateProvider } from "./modules/games/download-bandwidth.js";
 const { readFileSync } = fsExtra;
@@ -208,13 +209,6 @@ function parseRegExp(
   defaultValue?: RegExp,
 ): RegExp | undefined {
   return environmentVariable ? new RegExp(environmentVariable) : defaultValue;
-}
-
-function safeHash(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  return createHash("sha256").update(value).digest("hex");
 }
 
 export function getMaxBodySizeInBytes() {
@@ -440,13 +434,7 @@ const configuration = {
     RETENTION_DAYS: parseNumber(resolveEnv("METRICS_RETENTION_DAYS"), 365),
   } as const,
   AUTH: {
-    SEED:
-      safeHash(resolveEnv("AUTH_SEED")) ||
-      safeHash(resolveEnv("DB_PASSWORD")) ||
-      safeHash(resolveEnv("SERVER_ADMIN_PASSWORD")) ||
-      safeHash(resolveEnv("AUTH_OAUTH2_CLIENT_SECRET")) ||
-      safeHash(resolveEnv("METADATA_IGDB_CLIENT_SECRET")) ||
-      randomBytes(32).toString("hex"),
+    SEED: createAuthSeed(resolveEnv("AUTH_SEED")),
     ACCESS_TOKEN: {
       get SECRET() {
         return createHash("sha256")

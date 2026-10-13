@@ -1,15 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import fs from "fs-extra";
-import node7z from "node-7z";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import * as streamWeb from "node:stream/web";
 import * as semver from "semver";
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
-const { extractFull } = node7z;
+import { extractFrontendZip, MAX_FRONTEND_ZIP_BYTES } from "./safe-zip.js";
 
 interface GitHubRelease {
   tag_name: string;
@@ -102,6 +101,8 @@ export class WebUIService {
     const info = await fs.stat(source);
     if (!info.isFile())
       throw new Error("WEB_UI_LOCAL_BUNDLE must be a ZIP file.");
+    if (info.size > MAX_FRONTEND_ZIP_BYTES)
+      throw new Error("Frontend ZIP exceeds the 256 MiB limit.");
     const hash = createHash("sha256");
     for await (const chunk of fs.createReadStream(source)) hash.update(chunk);
     const version = `local-${hash.digest("hex")}`;
@@ -109,7 +110,6 @@ export class WebUIService {
     if (await this.isCached(version)) return;
     const zipPath = join(this.cachePath, "playstash-frontend.zip");
     await fs.copyFile(source, zipPath);
-    await this.cleanCacheExceptZip();
     await this.extractZip(zipPath);
     if (!(await fs.pathExists(join(this.cachePath, "dist", "index.html")))) {
       throw new Error("Frontend ZIP must contain dist/index.html.");
@@ -308,8 +308,6 @@ export class WebUIService {
       await this.downloadFile(downloadUrl, zipPath);
     }
 
-    await this.cleanCacheExceptZip();
-
     this.logger.log({ message: "Starting zip extraction", zipPath });
     await this.extractZip(zipPath);
 
@@ -338,18 +336,9 @@ export class WebUIService {
   /**
    * Extracts the zip archive in the cache directory.
    */
-  private extractZip(zipPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const unzip = extractFull(zipPath, this.cachePath, { $progress: true });
-      unzip.on("end", () => {
-        this.logger.log("Zip extraction completed");
-        resolve();
-      });
-      unzip.on("error", (err) => {
-        this.logger.error("Zip extraction error", err);
-        reject(err);
-      });
-    });
+  private async extractZip(zipPath: string): Promise<void> {
+    await extractFrontendZip(zipPath, this.cachePath);
+    this.logger.log("Zip extraction completed");
   }
 
   /**
@@ -396,13 +385,33 @@ export class WebUIService {
    * Downloads a file from a URL and saves it locally.
    */
   private async downloadFile(url: string, dest: string): Promise<void> {
+    const assertGitHubUrl = (candidate: string) => {
+      const parsed = new URL(candidate);
+      const host = parsed.hostname;
+      if (
+        parsed.protocol !== "https:" ||
+        parsed.username ||
+        parsed.password ||
+        ![
+          "github.com",
+          "api.github.com",
+          "objects.githubusercontent.com",
+          "release-assets.githubusercontent.com",
+        ].includes(host)
+      )
+        throw new Error(
+          "Frontend download requires an approved GitHub HTTPS host.",
+        );
+    };
+    assertGitHubUrl(url);
+    const signal = AbortSignal.timeout(120_000);
     const authenticated = new URL(url).origin === "https://api.github.com";
     let res = await fetch(url, {
       headers: authenticated
         ? this.githubHeaders("application/octet-stream")
         : undefined,
       redirect: "manual",
-      signal: AbortSignal.timeout(120_000),
+      signal,
     });
     // Signed asset URLs must never receive the repository read token.
     for (
@@ -410,28 +419,56 @@ export class WebUIService {
       [301, 302, 303, 307, 308].includes(res.status);
       redirects++
     ) {
+      const location = res.headers.get("location");
+      await res.body?.cancel();
       if (redirects >= 5)
         throw new Error("Too many frontend download redirects.");
-      const location = res.headers.get("location");
       if (!location)
         throw new Error("Frontend redirect is missing its location.");
       const next = new URL(location, url);
-      if (next.protocol !== "https:")
-        throw new Error("Frontend download requires HTTPS.");
+      assertGitHubUrl(next.toString());
       url = next.toString();
-      await res.body?.cancel();
       res = await fetch(url, {
         redirect: "manual",
-        signal: AbortSignal.timeout(120_000),
+        signal,
       });
     }
-    if (!res.ok) throw new Error(`Failed to download file: ${res.statusText}`);
+    if (!res.ok) {
+      await res.body?.cancel();
+      throw new Error(`Failed to download file: ${res.statusText}`);
+    }
     if (!res.body) throw new Error("Response body is empty");
+    const declaredSize = res.headers.get("content-length");
+    if (
+      declaredSize &&
+      (!/^\d+$/.test(declaredSize) ||
+        Number(declaredSize) > MAX_FRONTEND_ZIP_BYTES)
+    ) {
+      await res.body.cancel();
+      throw new Error("Frontend ZIP exceeds the 256 MiB limit.");
+    }
 
     const nodeStream = Readable.fromWeb(
       res.body as streamWeb.ReadableStream<Uint8Array>,
     );
-    await pipeline(nodeStream, fs.createWriteStream(dest));
+    let bytes = 0;
+    const limit = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        bytes += chunk.length;
+        callback(
+          bytes > MAX_FRONTEND_ZIP_BYTES
+            ? new Error("Frontend ZIP exceeds the 256 MiB limit.")
+            : null,
+          chunk,
+        );
+      },
+    });
+    try {
+      await pipeline(nodeStream, limit, fs.createWriteStream(dest), { signal });
+    } catch (error) {
+      await fs.remove(dest);
+      throw error;
+    }
 
     this.logger.debug({ message: "Downloaded file saved", dest });
   }

@@ -1,3 +1,6 @@
+vi.mock("../../filesystem/storage-path.js", () => ({
+  resolveStoragePath: vi.fn(async (_root: string, target: string) => target),
+}));
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -6,11 +9,15 @@ import {
 import fsExtra from "fs-extra";
 import { Repository } from "typeorm";
 import configuration from "../../configuration.js";
+import { downloadPublicMedia } from "../../http/public-download.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { Media } from "./media.entity.js";
 import { MediaService } from "./media.service.js";
 
+vi.mock("../../http/public-download.js", () => ({
+  downloadPublicMedia: vi.fn(),
+}));
 // Mock configuration - must be before any imports that use it
 vi.mock("../../configuration.js", () => ({
   __esModule: true,
@@ -318,13 +325,7 @@ describe("MediaService", () => {
 
   describe("downloadByUrl", () => {
     it("downloads, validates, saves, and persists media", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          arrayBuffer: async () => new ArrayBuffer(8),
-        }),
-      );
+      vi.mocked(downloadPublicMedia).mockResolvedValue(Buffer.alloc(8));
       (fileTypeChecker.detectFile as Mock).mockReturnValue({
         mimeType: "image/png",
         extension: "png",
@@ -344,16 +345,14 @@ describe("MediaService", () => {
       expect(media.type).toBe("image/png");
       expect(media.file_path).toMatch(/^\/media\/.+\.png$/);
       expect(mediaRepository.save).toHaveBeenCalled();
+      expect(downloadPublicMedia).toHaveBeenCalledWith(
+        "https://example.com/x.png",
+        configuration.MEDIA.MAX_SIZE,
+      );
     });
 
     it("throws InternalServerErrorException when the DB save fails", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          arrayBuffer: async () => new ArrayBuffer(8),
-        }),
-      );
+      vi.mocked(downloadPublicMedia).mockResolvedValue(Buffer.alloc(8));
       vi.spyOn(service as any, "validate").mockResolvedValue({
         mimeType: "image/png",
         extension: "png",
@@ -363,6 +362,18 @@ describe("MediaService", () => {
       await expect(
         service.downloadByUrl("https://example.com/x.png"),
       ).rejects.toThrow(InternalServerErrorException);
+    });
+    it("does not expose signed URL secrets when a download fails", async () => {
+      vi.mocked(downloadPublicMedia).mockRejectedValueOnce(
+        new Error("Media download connection failed."),
+      );
+      const source = "https://images.example/file.png?token=sensitive-value";
+      const error = await service
+        .downloadByUrl(source)
+        .catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect(String(error)).toContain("Failed to download media.");
+      expect(String(error)).not.toContain("sensitive-value");
     });
   });
 });

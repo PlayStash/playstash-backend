@@ -1,3 +1,6 @@
+vi.mock("../../filesystem/storage-path.js", () => ({
+  resolveStoragePath: vi.fn(async (_root: string, target: string) => target),
+}));
 import {
   BadRequestException,
   NotFoundException,
@@ -10,6 +13,7 @@ import { Readable } from "node:stream";
 import { join } from "path";
 import type { Mock, Mocked } from "vitest";
 import configurationModule from "../../configuration.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 import { MetadataService } from "../metadata/metadata.service.js";
 import * as packageManifest from "../packages/package-manifest.js";
 import { FilesService } from "./files.service.js";
@@ -234,6 +238,27 @@ describe("FilesService", () => {
   });
 
   describe("deleteGameFile", () => {
+    it("never deletes a version whose storage path fails containment", async () => {
+      gamesService.findOneByGameIdOrFail.mockResolvedValue({
+        id: 1,
+        file_path: "/tmp/test-files/alias/Game.zip",
+      } as any);
+      gameVersionRepository.find.mockResolvedValueOnce([
+        {
+          id: 1,
+          file_path: "/tmp/test-files/alias/Game.zip",
+          indexed_at: new Date(),
+        },
+      ] as any);
+      fsExtra.pathExists.mockResolvedValue(true);
+      vi.mocked(resolveStoragePath).mockRejectedValueOnce(
+        new Error("Storage paths cannot follow symbolic links."),
+      );
+      await expect(service.deleteGameFile(1, 1)).rejects.toThrow(
+        "symbolic links",
+      );
+      expect(fsExtra.rm).not.toHaveBeenCalled();
+    });
     it("should reject deletion when game has no available versions", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 1,
@@ -402,6 +427,17 @@ describe("FilesService", () => {
       );
       return { setHeader: vi.fn(), status: vi.fn(), once: vi.fn() } as any;
     };
+    it("does not open bytes or count a download after a denied storage path", async () => {
+      const response = prepareRealDownload();
+      vi.mocked(resolveStoragePath).mockRejectedValueOnce(
+        new Error("Storage paths cannot follow symbolic links."),
+      );
+      await expect(service.download(response, 42, 1)).rejects.toThrow(
+        "symbolic links",
+      );
+      expect(fsExtra.createReadStream).not.toHaveBeenCalled();
+      expect(gamesService.save).not.toHaveBeenCalled();
+    });
 
     it.each([
       ["bytes=3-5", "345", "bytes 3-5/10"],

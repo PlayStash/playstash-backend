@@ -21,9 +21,9 @@ import configuration from "../../../configuration.js";
 import { ConditionalRegistration } from "../../../decorators/conditional-registration.decorator.js";
 import { DisableApiIf } from "../../../decorators/disable-api-if.decorator.js";
 import { SkipGuards } from "../../../decorators/skip-guards.decorator.js";
-import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { RegisterUserDto } from "../../users/models/register-user.dto.js";
 import { Role } from "../../users/models/role.enum.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { AuthenticationService } from "../authentication.service.js";
 import { BasicAuthGuard } from "../guards/basic-auth.guard.js";
 import { TokenPairDto } from "../models/token-pair.dto.js";
@@ -60,7 +60,7 @@ export class BasicAuthController {
   ) {
     this.logger.log({
       message: "User logged in via basic auth.",
-      user: request.user,
+      userId: request.user.id,
     });
     return this.authenticationService.login(
       request.user,

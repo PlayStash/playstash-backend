@@ -1,6 +1,10 @@
+vi.mock("../../filesystem/storage-path.js", () => ({
+  resolveStoragePath: vi.fn(async (_root: string, target: string) => target),
+}));
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import fsExtra from "fs-extra";
 import configuration from "../../configuration.js";
+import { resolveStoragePath } from "../../filesystem/storage-path.js";
 
 import fileTypeCheckerMock from "file-type-checker";
 import { SavefileService } from "./savefile.service.js";
@@ -151,6 +155,32 @@ describe("SavefileService", () => {
   // ─── upload ────────────────────────────────────────────────────────
 
   describe("upload", () => {
+    it("does not move an upload through a linked save directory", async () => {
+      fileTypeChecker.detectFile.mockReturnValue({
+        extension: "zip",
+        mimeType: "application/zip",
+      });
+      Object.assign(configuration.TESTING, { MOCK_FILES: false });
+      vi.mocked(resolveStoragePath).mockRejectedValueOnce(
+        new Error("Storage paths cannot follow symbolic links."),
+      );
+      try {
+        await expect(
+          service.upload(
+            1,
+            42,
+            { path: "/savefiles/.playstash-upload-temp" } as any,
+            "testuser",
+          ),
+        ).rejects.toThrow("symbolic links");
+        expect(fsExtra.move).not.toHaveBeenCalled();
+        expect(fsExtra.remove).toHaveBeenCalledWith(
+          "/savefiles/.playstash-upload-temp",
+        );
+      } finally {
+        Object.assign(configuration.TESTING, { MOCK_FILES: true });
+      }
+    });
     it("should validate user permissions before saving", async () => {
       fileTypeChecker.detectFile.mockReturnValue({
         extension: "zip",

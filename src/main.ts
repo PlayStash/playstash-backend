@@ -26,6 +26,7 @@ import logger, { stream } from "./logging.js";
 import { LegacyRoutesMiddleware } from "./middleware/legacy-routes.middleware.js";
 import { createPlaystashApiDocument } from "./openapi.js";
 import loadPlugins from "./plugin.js";
+import { logPath } from "./security-log.js";
 const { readFileSync } = fsExtra;
 
 async function bootstrap(): Promise<void> {
@@ -60,7 +61,7 @@ async function bootstrap(): Promise<void> {
     origin: configuration.SERVER.CORS_ALLOWED_ORIGINS.length
       ? configuration.SERVER.CORS_ALLOWED_ORIGINS
       : true,
-    credentials: true,
+    credentials: configuration.SERVER.CORS_ALLOWED_ORIGINS.length > 0,
     methods: "*",
     allowedHeaders: "*",
     exposedHeaders: "*",
@@ -85,6 +86,14 @@ async function bootstrap(): Promise<void> {
   // Sessions
   app.use(
     session({
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: "auto",
+        maxAge: 15 * 60 * 1000,
+      },
       secret: createHash("sha256")
         .update(configuration.AUTH.SEED)
         .digest("hex"),
@@ -98,6 +107,7 @@ async function bootstrap(): Promise<void> {
   app.use(new LegacyRoutesMiddleware().use);
 
   // Skips logs for /status and /health calls
+  morgan.token("url", (request) => logPath(request.url));
   app.use(
     morgan(configuration.SERVER.REQUEST_LOG_FORMAT, {
       stream,
