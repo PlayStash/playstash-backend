@@ -2,7 +2,7 @@ name: Test
 
 on:
   pull_request:
-    branches: [develop, master]
+    branches: [dev, main]
   workflow_call:
 
 concurrency:

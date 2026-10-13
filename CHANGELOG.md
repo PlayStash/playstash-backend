@@ -5,6 +5,7 @@
 ### Breaking Changes & Migration
 
 - The database schema, migration history and default PostgreSQL database name use PlayStash. -> **Initialize a fresh database for this setup.**
+- Stable releases and development builds use the `main` and `dev` branches. -> **Update local branch tracking and external automation to these branch names.**
 
 ### Changes
 

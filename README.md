@@ -8,6 +8,8 @@ PlayStash features do not require a paid subscription.
 
 ## GitHub Actions
 
+The repository uses `main` for stable releases and `dev` for development builds. The `hotfix` and `early-access` release branches remain available.
+
 Workflow jobs are disabled by default. To enable them deliberately, set the repository Actions variable `PLAYSTASH_RUN_WORKFLOWS` to the exact value `true` under Settings → Secrets and variables → Actions → Variables. An unset variable, `false`, or any other value keeps every job disabled. Existing branch and project conditions still apply after enabling workflows.
 
 Optional integrations use your own accounts. For SonarCloud, set the repository variables `PLAYSTASH_SONAR_PROJECT_KEY` and `PLAYSTASH_SONAR_ORGANIZATION`, and add the `SONAR_TOKEN` secret; the scan job stays disabled when either variable is unset. For Discord release notices, set `PLAYSTASH_DISCORD_NOTIFICATIONS` to `true` and add the `DISCORD_RELEASE_BOT_WEBHOOK` secret. Notices stay disabled by default. Container publishing requires your own Docker Hub account and the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.

@@ -3,9 +3,9 @@ name: Deploy
 on:
   push:
     branches:
-      - master
+      - main
       - hotfix
-      - develop
+      - dev
       - early-access
 
 concurrency:
@@ -33,10 +33,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: "${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hotfix' && 0 || 1 }}"
+          fetch-depth: "${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix' && 0 || 1 }}"
 
       - name: Fetch Current Package Version
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hotfix' || github.ref == 'refs/heads/develop'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix' || github.ref == 'refs/heads/dev'
         id: package-version
         uses: martinbeentjes/npm-get-version-action@v1.3.1
 
@@ -131,11 +131,11 @@ jobs:
           }
 
           case "$BRANCH" in
-            master|hotfix)
+            main|hotfix)
               push_manifest "playstash/playstash-backend" "latest $VERSION"
               push_manifest "ghcr.io/playstash/playstash-backend" "latest $VERSION"
               ;;
-            develop)
+            dev)
               push_manifest "playstash/playstash-backend" "unstable"
               push_manifest "ghcr.io/playstash/playstash-backend" "unstable"
               ;;
@@ -146,14 +146,14 @@ jobs:
           esac
 
       - name: Create Github Tag & Release
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hotfix'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix'
         id: release
         uses: CupOfTea696/gh-action-auto-release@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Discord notification
-        if: vars.PLAYSTASH_DISCORD_NOTIFICATIONS == 'true' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/hotfix')
+        if: vars.PLAYSTASH_DISCORD_NOTIFICATIONS == 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/hotfix')
         uses: Ilshidur/action-discord@master
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_BOT_WEBHOOK }}
@@ -162,7 +162,7 @@ jobs:
 
   sonarcloud:
     needs: manifest
-    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && vars.PLAYSTASH_SONAR_PROJECT_KEY != '' && vars.PLAYSTASH_SONAR_ORGANIZATION != '' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/master') }}
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && vars.PLAYSTASH_SONAR_PROJECT_KEY != '' && vars.PLAYSTASH_SONAR_ORGANIZATION != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
