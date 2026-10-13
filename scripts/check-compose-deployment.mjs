@@ -759,6 +759,11 @@ try {
         "Distributed data must use persistent bind directories.",
       );
       assert.equal(
+        volume.bind?.create_host_path,
+        true,
+        "A fresh deployment must create its bind directories automatically.",
+      );
+      assert.equal(
         Boolean(volume.read_only),
         volume.target === secretTarget && name !== initializerName,
         "Only initializer may write the shared private password directory.",
@@ -812,7 +817,9 @@ try {
           key === "games"
             ? join(temporaryRoot, key)
             : join(temporaryRoot, "data", key);
-        mkdirSync(volume.source, { recursive: true, mode: 0o700 });
+        // Match a fresh deployment: Docker creates absent bind directories as
+        // root; the initializer assigns secrets to the service owner. Creating
+        // these leaves as the host CI UID would fail its ownership validation.
       }
     }
   }
