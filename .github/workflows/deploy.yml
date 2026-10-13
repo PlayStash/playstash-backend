@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: server-release-${{ github.repository }}
+  group: server-release-${{ github.repository }}-${{ github.ref == 'refs/heads/dev' && 'dev' || 'stable' }}
   cancel-in-progress: false
 
 jobs:

@@ -15,6 +15,7 @@
 - The PostgreSQL container uses updated system packages and replaces the outdated privilege-switch binary; both database and server runtime images are scanned before publishing.
 - Concurrent first registrations can create only one bootstrap administrator.
 - Published server releases include ready-to-run Compose files and a server setup guide; stable image updates follow `main` and keep stored data.
+- Simultaneous pushes to `main` and `dev` build both image channels without one pending branch build replacing the other.
 
 ## 17.1.2
 

@@ -758,9 +758,15 @@ try {
         "bind",
         "Distributed data must use persistent bind directories.",
       );
-      assert.equal(
-        volume.bind?.create_host_path,
-        true,
+      const shortMount = `./${relative(repository, volume.source).replaceAll("\\", "/")}:${volume.target}`;
+      const shortPattern = new RegExp(
+        `^\\s*-\\s*["']?${shortMount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::ro)?["']?\\s*(?:#.*)?$`,
+        "m",
+      );
+      assert.ok(
+        volume.bind?.create_host_path !== false &&
+          (volume.bind?.create_host_path === true ||
+            shortPattern.test(rawCompose)),
         "A fresh deployment must create its bind directories automatically.",
       );
       assert.equal(
@@ -817,6 +823,9 @@ try {
           key === "games"
             ? join(temporaryRoot, key)
             : join(temporaryRoot, "data", key);
+        // Some Compose JSON exporters omit this short-syntax default. The
+        // normalized long-form copy must keep it explicit for absent paths.
+        volume.bind = { ...volume.bind, create_host_path: true };
         // Match a fresh deployment: Docker creates absent bind directories as
         // root; the initializer assigns secrets to the service owner. Creating
         // these leaves as the host CI UID would fail its ownership validation.
