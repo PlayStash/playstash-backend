@@ -2,7 +2,25 @@
 
 PlayStash is a self-hosted gaming platform for organizing and sharing legally obtained DRM-free games with your friends. This repository contains the backend server.
 
-Find the source, releases and issue tracker in the [PlayStash backend repository](https://github.com/PlayStash/playstash-backend). See [INSTALL.md](INSTALL.md) for local development setup and the Docker Compose examples for a fresh installation.
+Find the source, releases and issue tracker in the [PlayStash backend repository](https://github.com/PlayStash/playstash-backend). See [INSTALL.md](INSTALL.md) for local development setup.
+
+## Install on a server
+
+Copy `docker-compose.yml` into an empty directory on a Linux server with Docker
+and the Compose plugin, then run:
+
+```sh
+docker compose up -d
+```
+
+Open `http://SERVER-IP:8080` and register your administrator account. GitHub builds
+the public AMD64/ARM64 image, which includes the web interface. PostgreSQL,
+persistent data directories, a unique database password and a private
+authentication key are prepared automatically.
+The first registered account becomes the administrator; later accounts need
+activation. No source checkout, server build, registry login or environment file
+is required. See [the server guide](docs/DOCKER.md) for games, backups, updates,
+custom ports and the PostgreSQL configuration.
 
 See [Game packages](docs/packages.md) for unarchived game folders, optional installation manifests, extras, and separate mod/DLC/patch archives.
 
@@ -14,10 +32,13 @@ PlayStash features do not require a paid subscription.
 
 ## Authentication security
 
-Set `AUTH_SEED` to at least 32 bytes of independently generated randomness to keep
-sessions valid across restarts. Token keys are never derived from an administrator,
-database or provider password; without `AUTH_SEED`, each restart generates a new
-key and invalidates existing tokens. If `SERVER_ADMIN_USERNAME` is configured,
+Containers automatically generate and privately persist a random authentication
+key in `/config/auth-seed` when `AUTH_SEED_PERSIST=true`. Explicit `AUTH_SEED` or
+`AUTH_SEED_FILE` settings take precedence and require at least 32 bytes of
+independently generated randomness. Token keys are never derived from an
+administrator, database or provider password. Without persistence or an explicit
+key, each restart generates a new key and invalidates existing tokens.
+If `SERVER_ADMIN_USERNAME` is configured,
 registration of that reserved account requires `SERVER_ADMIN_PASSWORD`; other
 registrations cannot claim administrator privileges by choosing that name.
 SSO requires `AUTH_OAUTH2_USERINFO_URL`, binds accounts to that
@@ -46,7 +67,7 @@ GitHub-hosted jobs run automatically on their declared triggers. Pull requests r
 
 This repository currently defines no self-hosted runner jobs. Any future jobs on user-installed runners must require the repository Actions variable `PLAYSTASH_RUN_SELF_HOSTED` to equal the exact value `true`; unset or `false` keeps those jobs disabled by default. Configure the variable under Settings → Secrets and variables → Actions → Variables. It does not gate GitHub-hosted jobs.
 
-Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.2` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. Private container images require an authenticated registry login.
+Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.3` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. The server container package is public for anonymous pulls while the source repository stays private. Stable releases include the Compose files and server guide.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 

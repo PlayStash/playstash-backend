@@ -51,6 +51,7 @@ const DEFAULT_USER_FIND_OPTIONS: FindOptions = {
 @Injectable()
 export class UsersService implements OnApplicationBootstrap {
   private readonly logger = new Logger(this.constructor.name);
+  private registrationQueue: Promise<void> = Promise.resolve();
 
   constructor(
     @InjectRepository(PlaystashUser)
@@ -270,6 +271,26 @@ export class UsersService implements OnApplicationBootstrap {
     dto: RegisterUserDto,
     sso?: { provider: string; subject: string },
   ): Promise<PlaystashUser> {
+    const preceding = this.registrationQueue;
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.registrationQueue = preceding.then(() => current);
+    await preceding;
+    try {
+      return await this.registerSequentially(dto, sso);
+    } finally {
+      release();
+    }
+  }
+
+  private async registerSequentially(
+    dto: RegisterUserDto,
+    sso?: { provider: string; subject: string },
+  ): Promise<PlaystashUser> {
+    // Count and persist together: simultaneous first registrations must not both
+    // become the administrator of a newly installed single-process server.
     await this.throwIfAlreadyExists(dto.username, dto.email);
     const isConfiguredAdministrator =
       this.config.SERVER.ADMIN_USERNAME != null &&

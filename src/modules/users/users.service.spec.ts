@@ -262,6 +262,77 @@ describe("UsersService", () => {
       expect(result.activated).toBe(true);
     });
 
+    it("grants administrator status to only one simultaneous first registration", async () => {
+      const persisted: PlaystashUser[] = [];
+      userRepository.findOne.mockResolvedValue(null);
+      userRepository.count.mockImplementation(async () => persisted.length);
+      userRepository.save.mockImplementation(async (user) => {
+        // Both requests are pending before the first record has been saved.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const saved = { ...user, id: persisted.length + 1 } as PlaystashUser;
+        persisted.push(saved);
+        return saved;
+      });
+      const initial = new UsersService(
+        userRepository,
+        mediaService,
+        gamesService,
+        {
+          ...configuration,
+          SERVER: {
+            ...configuration.SERVER,
+            ADMIN_USERNAME: undefined,
+            ACCOUNT_ACTIVATION_DISABLED: false,
+          },
+        } as any,
+      );
+      const users = await Promise.all([
+        initial.register({ username: "first", password: "test-password" }),
+        initial.register({ username: "second", password: "test-password" }),
+        initial.register({ username: "third", password: "test-password" }),
+      ]);
+      expect(users.map((user) => user.role)).toEqual([
+        Role.ADMIN,
+        Role.USER,
+        Role.USER,
+      ]);
+      expect(users.map((user) => user.activated)).toEqual([true, false, false]);
+      expect(persisted).toHaveLength(3);
+    });
+
+    it("allows the next registration after a failed request without losing first-admin status", async () => {
+      userRepository.findOne
+        .mockResolvedValueOnce(createMockUser())
+        .mockResolvedValue(null);
+      userRepository.count.mockResolvedValue(0);
+      userRepository.save.mockImplementation(
+        async (user) => ({ ...user, id: 1 }) as any,
+      );
+      const initial = new UsersService(
+        userRepository,
+        mediaService,
+        gamesService,
+        {
+          ...configuration,
+          SERVER: { ...configuration.SERVER, ADMIN_USERNAME: undefined },
+        } as any,
+      );
+      const failed = initial.register({
+        username: "duplicate",
+        password: "test-password",
+      });
+      const succeeding = initial.register({
+        username: "first",
+        password: "test-password",
+      });
+      await expect(failed).rejects.toThrow(ForbiddenException);
+      await expect(succeeding).resolves.toMatchObject({
+        role: Role.ADMIN,
+        activated: true,
+      });
+      expect(userRepository.save).toHaveBeenCalledTimes(1);
+    });
+
     it("should throw ForbiddenException for duplicate username", async () => {
       const existing = createMockUser();
       userRepository.findOne.mockResolvedValue(existing);

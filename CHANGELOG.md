@@ -1,5 +1,21 @@
 # PlayStash Backend Changelog
 
+## 17.1.3
+
+### Breaking Changes & Migration
+
+- The default Docker Compose installation uses the published stable image and PostgreSQL with persistent host directories instead of building the source and using a placeholder database password. -> **For a fresh server, copy `docker-compose.yml` and run `docker compose up -d`; existing PostgreSQL deployments must keep their current credentials and data directories.**
+
+### Changes
+
+- The server image includes a verified frontend release, making the web interface available without a separate frontend download, GitHub token or source build.
+- Container installations automatically create and reuse a private authentication key in the persisted configuration directory; explicit operator-provided keys retain precedence.
+- Compose creates persistent directories for games, database, media, saves, plugins, configuration and logs without shared administrator credentials; the first registered account becomes the administrator.
+- PostgreSQL receives a unique, automatically generated private password that is reused across restarts; no password placeholder or environment file is required.
+- The PostgreSQL container uses updated system packages and replaces the outdated privilege-switch binary; both database and server runtime images are scanned before publishing.
+- Concurrent first registrations can create only one bootstrap administrator.
+- Published server releases include ready-to-run Compose files and a server setup guide; stable image updates follow `main` and keep stored data.
+
 ## 17.1.2
 
 ### Breaking Changes & Migration

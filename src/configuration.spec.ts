@@ -4,7 +4,13 @@
  * their effects on the configuration object and exported utilities.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -178,6 +184,103 @@ describe("Configuration", () => {
       const { default: config } = await import("./configuration.js");
 
       expect(config.SERVER.PORT).toBe(8089);
+    });
+  });
+
+  describe("persistent authentication configuration", () => {
+    let tempConfigDir: string;
+
+    beforeEach(() => {
+      tempConfigDir = mkdtempSync(join(tmpdir(), "playstash-config-auth-"));
+      vi.stubEnv("VOLUMES_CONFIG", tempConfigDir);
+      vi.stubEnv("AUTH_SEED", "");
+      vi.stubEnv("AUTH_SEED_FILE", "");
+      vi.stubEnv("AUTH_SEED_PERSIST", "true");
+      vi.resetModules();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+      rmSync(tempConfigDir, { recursive: true, force: true });
+    });
+
+    it("loads the same token signing secrets after a fresh configuration import", async () => {
+      const first = (await import("./configuration.js")).default;
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(true);
+      vi.resetModules();
+      const restarted = (await import("./configuration.js")).default;
+      expect(restarted.AUTH.SEED).toBe(first.AUTH.SEED);
+      expect(restarted.AUTH.ACCESS_TOKEN.SECRET).toBe(
+        first.AUTH.ACCESS_TOKEN.SECRET,
+      );
+      expect(restarted.AUTH.REFRESH_TOKEN.SECRET).toBe(
+        first.AUTH.REFRESH_TOKEN.SECRET,
+      );
+    });
+
+    it("prioritizes Docker secrets over environment and persisted defaults", async () => {
+      const seedFile = join(tempConfigDir, "explicit-seed");
+      const explicit = "docker-secret-with-independent-32-byte-randomness";
+      writeFileSync(seedFile, `${explicit}\n`);
+      vi.stubEnv(
+        "AUTH_SEED",
+        "different-environment-secret-with-at-least-32-bytes",
+      );
+      vi.stubEnv("AUTH_SEED_FILE", seedFile);
+      const config = (await import("./configuration.js")).default;
+      const { createAuthSeed } = await import("./auth-seed.js");
+      expect(config.AUTH.SEED).toBe(createAuthSeed(explicit));
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(false);
+    });
+
+    it("keeps explicit environment seeds and short-seed rejection unchanged", async () => {
+      const explicit = "environment-secret-with-independent-32-byte-randomness";
+      vi.stubEnv("AUTH_SEED", explicit);
+      const config = (await import("./configuration.js")).default;
+      const { createAuthSeed } = await import("./auth-seed.js");
+      expect(config.AUTH.SEED).toBe(createAuthSeed(explicit));
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(false);
+      vi.stubEnv("AUTH_SEED", "short");
+      vi.resetModules();
+      await expect(import("./configuration.js")).rejects.toThrow(
+        "AUTH_SEED must contain at least 32 bytes",
+      );
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(false);
+    });
+
+    it("honors explicitly disabled persistence without creating a key file", async () => {
+      vi.stubEnv("AUTH_SEED_PERSIST", "false");
+      const first = (await import("./configuration.js")).default;
+      vi.resetModules();
+      const second = (await import("./configuration.js")).default;
+      expect(second.AUTH.SEED).not.toBe(first.AUTH.SEED);
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(false);
+    });
+
+    it("accepts YAML-provided explicit seeds before generated persistence", async () => {
+      const explicit = "yaml-secret-with-independent-32-byte-randomness";
+      vi.stubEnv("AUTH_SEED", undefined);
+      writeFileSync(
+        join(tempConfigDir, "config.yaml"),
+        `AUTH_SEED: ${explicit}\n`,
+      );
+      const config = (await import("./configuration.js")).default;
+      const { createAuthSeed } = await import("./auth-seed.js");
+      expect(config.AUTH.SEED).toBe(createAuthSeed(explicit));
+      expect(existsSync(join(tempConfigDir, "auth-seed"))).toBe(false);
+    });
+
+    it("fails configuration loading for an invalid stored key without changing it", async () => {
+      writeFileSync(join(tempConfigDir, "auth-seed"), "invalid-key", {
+        mode: 0o600,
+      });
+      await expect(import("./configuration.js")).rejects.toThrow(
+        "Cannot securely load persistent authentication seed",
+      );
+      expect(readFileSync(join(tempConfigDir, "auth-seed"), "utf8")).toBe(
+        "invalid-key",
+      );
     });
   });
 

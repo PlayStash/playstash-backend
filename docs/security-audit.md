@@ -15,17 +15,17 @@ The review includes direct, transitive, development and optional dependencies, p
 
 Run the repository's declared package manager (`corepack pnpm`, currently pnpm 11.7.0), because its workspace overrides are part of the resolved security policy. The initial full audit reported 21 advisories: 1 critical, 11 high, 8 moderate and 1 low. After the updates below and addition of the ZIP parser, the full audit covered 609 resolved dependencies and reported zero advisories at every severity.
 
-| Package | Previous version | Patched version | Maintainer evidence |
-| --- | --- | --- | --- |
-| multer | 2.2.0 | 2.4.0 | [Multipart upload advisory](https://github.com/expressjs/multer/security/advisories/GHSA-3pph-fpjx-jg34) |
-| morgan | 1.12.0 | 1.12.1 | [Request logging advisory](https://github.com/expressjs/morgan/security/advisories/GHSA-9f6g-j8ch-79g4) |
-| fast-uri | 3.1.7 / 4.1.4 | 3.1.8 / 4.1.5 | [URI handling advisory](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj) |
-| moment | 2.30.1 | 2.31.0 | [Locale loading advisory](https://github.com/moment/moment/security/advisories/GHSA-4p3w-j4w9-5jqw) |
-| brace-expansion | 5.0.9 | 5.0.12 | [Expansion advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-q2hr-2g5m-vwhr) |
-| fastify | 5.12.1 | 5.12.5 | [HTTP parsing advisory](https://github.com/fastify/fastify/security/advisories/GHSA-4mh8-r7rc-xpvc) |
-| source-map-js | 1.2.1 | 1.2.2 | [Maintainer release notes](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2) |
-| proxy-addr | 2.0.7 | 2.0.8 | [Proxy address advisory](https://github.com/jshttp/proxy-addr/security/advisories/GHSA-jqcg-44mw-7w3h) |
-| compression | 1.8.1 | 1.8.2 | [Response compression advisory](https://github.com/expressjs/compression/security/advisories/GHSA-vc2v-76pw-4v95) |
+| Package         | Previous version | Patched version | Maintainer evidence                                                                                               |
+| --------------- | ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| multer          | 2.2.0            | 2.4.0           | [Multipart upload advisory](https://github.com/expressjs/multer/security/advisories/GHSA-3pph-fpjx-jg34)          |
+| morgan          | 1.12.0           | 1.12.1          | [Request logging advisory](https://github.com/expressjs/morgan/security/advisories/GHSA-9f6g-j8ch-79g4)           |
+| fast-uri        | 3.1.7 / 4.1.4    | 3.1.8 / 4.1.5   | [URI handling advisory](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj)              |
+| moment          | 2.30.1           | 2.31.0          | [Locale loading advisory](https://github.com/moment/moment/security/advisories/GHSA-4p3w-j4w9-5jqw)               |
+| brace-expansion | 5.0.9            | 5.0.12          | [Expansion advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-q2hr-2g5m-vwhr)     |
+| fastify         | 5.12.1           | 5.12.5          | [HTTP parsing advisory](https://github.com/fastify/fastify/security/advisories/GHSA-4mh8-r7rc-xpvc)               |
+| source-map-js   | 1.2.1            | 1.2.2           | [Maintainer release notes](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2)                          |
+| proxy-addr      | 2.0.7            | 2.0.8           | [Proxy address advisory](https://github.com/jshttp/proxy-addr/security/advisories/GHSA-jqcg-44mw-7w3h)            |
+| compression     | 1.8.1            | 1.8.2           | [Response compression advisory](https://github.com/expressjs/compression/security/advisories/GHSA-vc2v-76pw-4v95) |
 
 Direct dependencies use compatible patch ranges. Narrow, major-preserving overrides in `pnpm-workspace.yaml` patch vulnerable transitive ranges, and the committed lockfile records the selected versions. `yauzl` 3.4.0 provides strict central-directory ZIP parsing and size validation; extraction applies additional path, entry type and byte limits.
 
@@ -51,3 +51,47 @@ Configured filesystem volumes, local frontend ZIP paths, OAuth providers and not
 An administrator may intentionally configure a webhook on the private network. That endpoint is not subject to the public-artwork restriction: notifications already reject redirects, use a short timeout and a bounded queue, and exclude restricted games. Artwork hosted only on a private network must instead be uploaded through the authenticated media endpoint.
 
 Keep upload limits enabled in exposed installations. A clean dependency audit is a snapshot, not a future guarantee. Host/container OS packages are reviewed separately from this Node dependency audit. Hosted CI runs normally; any future self-hosted runner job must explicitly require `PLAYSTASH_RUN_SELF_HOSTED == 'true'`, disabled by default.
+
+## PostgreSQL Compose deployment (17.1.3)
+
+The default production Compose file starts PostgreSQL 16, a one-time credential
+initializer and the prebuilt backend. It exposes only the backend HTTP port and
+keeps database traffic inside the Compose network. Readiness checks use TCP so
+the temporary socket-only database used during PostgreSQL initialization does
+not start the backend prematurely.
+
+The initializer generates 32 independently random bytes for the database
+password and stores them in `data/secrets/postgres-password`. The service account
+owns the ordinary single-link file with mode `0600`; its directory is `0700`.
+PostgreSQL's official root entrypoint reads the read-only secret before dropping
+privileges. The backend reads the same read-only file. Existing keys are reused,
+never printed or silently replaced; invalid content, excessive size, links and
+unexpected ownership stop initialization.
+
+Docker enables `AUTH_SEED_PERSIST=true`. A separate random key is privately stored
+in `/config/auth-seed`, allowing access/refresh tokens to remain valid after
+container replacement. Explicit environment, secret-file or YAML keys preserve
+their existing precedence. Registration is serialized within the single backend
+process so simultaneous first registrations cannot create multiple bootstrap
+administrators. Operators create their own first account before sharing access.
+
+The frontend ZIP is pinned to its published version, source commit and SHA-256.
+Build checks verify its safe ZIP layout, original license and bundled third-party
+notices. It is baked into the image; startup needs no repository token or remote
+frontend download. License and provenance text use canonical Git line endings so
+their checksums also hold in Linux builds.
+
+The official PostgreSQL 16 Alpine image initially reported 61 known runtime
+advisories: one outdated system package and 60 records in the old Go-built
+privilege-switch helper. The patched database image updates the Alpine packages
+and replaces that helper with the Alpine `su-exec` implementation while retaining
+the official PostgreSQL entrypoint. On 14 October 2026, the complete patched
+database scan covered 46 OS packages with zero findings; the backend scan covered
+36 OS packages and its Node dependency graph with zero findings. No advisory or
+severity is ignored.
+
+Hosted release jobs build and scan both actual runtime images for AMD64 and
+ARM64, exercise the complete PostgreSQL Compose deployment, and require anonymous
+registry pulls before publishing a usable stable release. Weekly/manual security
+jobs also scan both published platform images. The source repository remains
+private independently of the container package's public download permission.

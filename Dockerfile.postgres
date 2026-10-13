@@ -1,0 +1,14 @@
+# Preserve the official PostgreSQL entrypoint and its initialization behavior.
+FROM postgres:16-alpine
+LABEL org.opencontainers.image.source="https://github.com/PlayStash/playstash-backend"
+ARG SECURITY_REFRESH=local
+RUN test -n "$SECURITY_REFRESH" \
+    && apk upgrade --no-cache \
+    && apk add --no-cache su-exec \
+    && rm -f /usr/local/bin/gosu /usr/local/bin/su-exec
+# Emit a deletion layer before recreating the compatibility command. Otherwise
+# layer scanners can retain Go package metadata from the overwritten binary.
+RUN printf '%s\n' '#!/bin/sh' 'exec /sbin/su-exec "$@"' > /usr/local/bin/gosu \
+    && chmod 755 /usr/local/bin/gosu \
+    && test "$(gosu postgres id -u)" = "$(id -u postgres)" \
+    && test "$(gosu postgres:postgres id -g)" = "$(id -g postgres)"

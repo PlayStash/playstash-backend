@@ -3,6 +3,8 @@
 /dist
 /node_modules
 .local/
+/data/
+/games/
 !.gitkeep
 
 # Logs

@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main, dev]
   schedule:
-    - cron: '23 7 * * 1'
+    - cron: "23 7 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -50,3 +50,38 @@ jobs:
           node-version: lts/*
       - name: Audit all production and development packages
         run: pnpm audit --audit-level=low
+
+  published-containers:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Download and verify pinned container scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz -o "$RUNNER_TEMP/trivy.tar.gz"
+          echo 'c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  '"$RUNNER_TEMP/trivy.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/trivy"
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP/trivy"
+      - name: Check published server and PostgreSQL images
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/server.json" ghcr.io/playstash/playstash-backend:latest
+          "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/postgres.json" ghcr.io/playstash/playstash-backend:postgres16
+      - name: Keep runtime vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-container-audit-${{ strategy.job-index }}
+          path: |
+            ${{ runner.temp }}/server.json
+            ${{ runner.temp }}/postgres.json
+          if-no-files-found: ignore
+          retention-days: 14

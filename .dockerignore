@@ -5,6 +5,8 @@ node_modules
 *.md
 dist
 .local
+data
+games
 .env*
 coverage
 coverage-target

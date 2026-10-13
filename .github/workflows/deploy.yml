@@ -3,7 +3,7 @@ name: Build and release server
 on:
   push:
     branches: [main, dev]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -53,15 +53,60 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: SECURITY_REFRESH=${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           tags: ${{ steps.image.outputs.name }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=server-${{ strategy.job-index }}
           cache-to: type=gha,mode=max,scope=server-${{ strategy.job-index }}
+      - name: Build and push patched PostgreSQL architecture image
+        id: postgres-build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.postgres
+          platforms: ${{ matrix.platform }}
+          build-args: SECURITY_REFRESH=${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          tags: ${{ steps.image.outputs.name }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=postgres-${{ strategy.job-index }}
+          cache-to: type=gha,mode=max,scope=postgres-${{ strategy.job-index }}
+      - name: Install verified Trivy scanner
+        run: |
+          mkdir -p "$RUNNER_TEMP/playstash-trivy"
+          archive="$RUNNER_TEMP/playstash-trivy/trivy.tar.gz"
+          curl --fail --location --retry 3 https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz --output "$archive"
+          echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  $archive" | sha256sum --check -
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/playstash-trivy" trivy
+          echo "$RUNNER_TEMP/playstash-trivy" >> "$GITHUB_PATH"
+      - name: Scan both built images for vulnerabilities at every severity
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          POSTGRES_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.postgres-build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          status=0
+          trivy image --image-src remote --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --format json --output trivy-backend.json "$IMAGE" || status=1
+          trivy image --image-src remote --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --format json --output trivy-postgres.json "$POSTGRES_IMAGE" || status=1
+          exit "$status"
+      - name: Preserve actual image scan results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-image-security-${{ strategy.job-index }}
+          path: trivy-*.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify private storage in the built container
         env:
           IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           PLATFORM: ${{ matrix.platform }}
         run: node scripts/check-container-privacy.mjs "$IMAGE" "$PLATFORM"
+      - name: Verify complete server deployment with bundled web interface
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          POSTGRES_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.postgres-build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: node scripts/check-compose-deployment.mjs "$IMAGE" "$PLATFORM" "$POSTGRES_IMAGE"
       - name: Export digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -72,6 +117,18 @@ jobs:
         with:
           name: server-digest-${{ strategy.job-index }}
           path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Export PostgreSQL digest
+        env:
+          DIGEST: ${{ steps.postgres-build.outputs.digest }}
+        run: |
+          mkdir -p postgres-digests
+          touch "postgres-digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: postgres-digest-${{ strategy.job-index }}
+          path: postgres-digests/*
           if-no-files-found: error
           retention-days: 1
 
@@ -85,6 +142,11 @@ jobs:
         with:
           pattern: server-digest-*
           path: digests
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: postgres-digest-*
+          path: postgres-digests
           merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -102,14 +164,22 @@ jobs:
           tag="v$version"
           refs=()
           for digest in digests/*; do refs+=("$image@sha256:$(basename "$digest")"); done
+          postgres_refs=()
+          for digest in postgres-digests/*; do postgres_refs+=("$image@sha256:$(basename "$digest")"); done
           tags=(-t "$image:sha-${GITHUB_SHA:0:12}")
+          postgres_tags=(-t "$image:postgres16-sha-${GITHUB_SHA:0:12}")
           if [ "$REF_NAME" = dev ]; then
             tags+=(-t "$image:dev")
+            postgres_tags+=(-t "$image:postgres16-dev")
             docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+            docker buildx imagetools create "${postgres_tags[@]}" "${postgres_refs[@]}"
+            node scripts/check-public-container.mjs "$image:dev"
+            node scripts/check-public-container.mjs "$image:postgres16-dev"
             exit 0
           fi
 
           tags+=(-t "$image:latest")
+          postgres_tags+=(-t "$image:postgres16")
           publish_release=false
           create_draft=false
           # REST releases/tags cannot discover drafts with a pending tag.
@@ -164,18 +234,26 @@ jobs:
           if [ "$publish_release" = true ]; then
             node scripts/release-notes.mjs "$version" > release-notes.md
             printf '\nContainer: `%s:%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
+            printf '\nPostgreSQL 16: `%s:postgres16-%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
             # Reserve this version for this commit before touching its image tag.
             if [ "$create_draft" = true ]; then
               gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "PlayStash Server $version" --notes-file release-notes.md
             else
               gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
             fi
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" docker-compose.yml docker-compose.postgres.yml docs/DOCKER.md --clobber
             tags+=(-t "$image:$tag")
+            postgres_tags+=(-t "$image:postgres16-$tag")
           fi
 
           # Existing published version tags remain unchanged; latest/sha can advance.
           docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          docker buildx imagetools create "${postgres_tags[@]}" "${postgres_refs[@]}"
+          node scripts/check-public-container.mjs "$image:latest"
+          node scripts/check-public-container.mjs "$image:postgres16"
           if [ "$publish_release" = true ]; then
+            node scripts/check-public-container.mjs "$image:$tag"
+            node scripts/check-public-container.mjs "$image:postgres16-$tag"
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           fi
 

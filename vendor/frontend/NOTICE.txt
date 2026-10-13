@@ -1,0 +1,19 @@
+PlayStash frontend 17.2.1
+
+This is the unmodified web ZIP from the published PlayStash frontend release.
+Original authors: Alkan Alper, Schäfer Philip GbR / Phalcode.
+PlayStash modifications are available in the source repository listed below.
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International.
+The complete original license is included in LICENSE.
+
+Source: https://github.com/PlayStash/playstash-frontend/tree/8928af34becd749a972d126097c8d9b59591230d
+Release: https://github.com/PlayStash/playstash-frontend/releases/tag/v17.2.1
+License source: https://github.com/PlayStash/playstash-frontend/blob/8928af34becd749a972d126097c8d9b59591230d/LICENSE
+
+The ZIP preserves the frontend's original-license and third-party-license
+modules. Full dependency license texts remain available in the web interface
+under Settings > About > Open Source Licenses. Their exact paths and hashes
+are recorded in provenance.json alongside the unmodified release ZIP hash.
+
+Updates require an explicit replacement with a published, verified release
+and its matching provenance. The image does not download web code at runtime.

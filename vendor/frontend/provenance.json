@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "PlayStash frontend",
+  "version": "17.2.1",
+  "repository": "https://github.com/PlayStash/playstash-frontend",
+  "commit": "8928af34becd749a972d126097c8d9b59591230d",
+  "source": "https://github.com/PlayStash/playstash-frontend/tree/8928af34becd749a972d126097c8d9b59591230d",
+  "release": "https://github.com/PlayStash/playstash-frontend/releases/tag/v17.2.1",
+  "asset": {
+    "filename": "playstash-frontend.zip",
+    "size": 9974459,
+    "sha256": "ac087701d18d5737e29d0e40e42a828e8642862e623385ef3de4df20f21202a1",
+    "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.1/playstash-frontend.zip"
+  },
+  "license": {
+    "identifier": "CC-BY-NC-SA-4.0",
+    "file": "LICENSE",
+    "sha256": "1349a4b6148492b44f629e64eed676612e234fe9a839e4f3b277c1482c8849f1",
+    "source": "https://github.com/PlayStash/playstash-frontend/blob/8928af34becd749a972d126097c8d9b59591230d/LICENSE"
+  },
+  "notice": {
+    "file": "NOTICE.txt",
+    "sha256": "726eb4c410f947c21a9ed3f022a4cd87cf9279826c8c184c67dcc0f9fad955c0"
+  },
+  "bundledLicenseFiles": [
+    {
+      "path": "dist/assets/LICENSE_raw-CMPfrDK7.js",
+      "sha256": "807ea57966284fcbb22f05fc9b11746f8c28c171bb0e4996dd531e72b71f31dd"
+    },
+    {
+      "path": "dist/assets/third-party-licenses-3GUCucLW.js",
+      "sha256": "0091747c1d4900cfb6d8e33dc7b80ba7f44768086241c6c71a607bb790d63d51"
+    }
+  ]
+}

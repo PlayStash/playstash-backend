@@ -1,6 +1,10 @@
 # How to Set Up PlayStash Backend for Local Development
 
-For a fresh PlayStash installation, use an empty database and the PlayStash Docker Compose examples.
+For a fresh server installation, copy `docker-compose.yml` and run
+`docker compose up -d`; see [the server guide](docs/DOCKER.md). The default Compose
+file loads a prebuilt image with the web interface, automatically creates a
+PostgreSQL database with a unique generated password, and persists all writable data beside the Compose file. The
+steps below are for local source development.
 
 To generate the frontend API specification from this backend without starting a server or connecting to a database, run `pnpm export:openapi ../playstash-frontend/api-spec/playstash.openapi.json` after installing development dependencies.
 
@@ -8,11 +12,27 @@ Run `pnpm check:fresh-schema sqlite` to verify all migrations against an empty, 
 
 ## Web interface and private repositories
 
-The server serves the `playstash-frontend.zip` release bundle. For an offline installation, download that bundle while signed in to GitHub, mount it into the container, and set `WEB_UI_LOCAL_BUNDLE=/path/to/playstash-frontend.zip`. Its ZIP must contain `dist/index.html`; changes to the ZIP are detected by its content hash on server restart. This option takes precedence over GitHub release lookup and works without credentials or a network connection.
+The published Docker image already contains a verified `playstash-frontend.zip`
+release bundle and serves it without a GitHub download or token. For custom or
+standalone installations, mount a different bundle and set
+`WEB_UI_LOCAL_BUNDLE=/path/to/playstash-frontend.zip`. Its ZIP must contain
+`dist/index.html`; changes to the ZIP are detected by its content hash on server
+restart. This option takes precedence over GitHub release lookup and works
+without credentials or a network connection.
 
-Alternatively, private frontend releases require `WEB_UI_GITHUB_TOKEN` or `WEB_UI_GITHUB_TOKEN_FILE`, with a fine-grained token granting **Contents: read** on `PlayStash/playstash-frontend`. The token remains server-side, is redacted from the configuration API, and is omitted from asset-download redirects. Public repositories need no token. `WEB_UI_VERSION=v17.2.0` pins a release. Set `WEB_UI_ENABLED=false` to run only the API.
+Alternatively, set `WEB_UI_LOCAL_BUNDLE: ""` to enable GitHub release lookup in a
+container. Private frontend releases require `WEB_UI_GITHUB_TOKEN` or
+`WEB_UI_GITHUB_TOKEN_FILE`, with a fine-grained token granting **Contents: read** on
+`PlayStash/playstash-frontend`. The token remains server-side, is redacted from the
+configuration API, and is omitted from asset-download redirects. Public
+repositories need no token. `WEB_UI_VERSION=v17.2.1` pins a release in this mode.
+Set `WEB_UI_ENABLED=false` to run only the API.
 
-GitHub installers and private container images require an account with access to their repositories. A private GitHub release feed cannot be used anonymously by the desktop updater; distribute updates through an accessible feed or download installers while authenticated.
+The server container package supports anonymous pulls; source repositories and
+installer releases remain private. Those GitHub releases require an account with
+repository access. A private release feed cannot be used anonymously by the
+desktop updater; distribute updates through an accessible feed or download
+installers while authenticated.
 
 ## Scheduled download bandwidth
 

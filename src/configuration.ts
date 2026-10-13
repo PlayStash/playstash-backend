@@ -434,7 +434,10 @@ const configuration = {
     RETENTION_DAYS: parseNumber(resolveEnv("METRICS_RETENTION_DAYS"), 365),
   } as const,
   AUTH: {
-    SEED: createAuthSeed(resolveEnv("AUTH_SEED")),
+    SEED: createAuthSeed(resolveEnv("AUTH_SEED"), {
+      persist: parseBooleanEnvVariable(resolveEnv("AUTH_SEED_PERSIST")),
+      configDirectory: parsePath(resolveEnv("VOLUMES_CONFIG"), "/config"),
+    }),
     ACCESS_TOKEN: {
       get SECRET() {
         return createHash("sha256")
