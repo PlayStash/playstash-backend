@@ -17,7 +17,7 @@ import {
 import { type Response } from "express";
 import configuration from "../../../configuration.js";
 import { SkipGuards } from "../../../decorators/skip-guards.decorator.js";
-import { GamevaultUser } from "../../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { AuthenticationService } from "../authentication.service.js";
 import { Oauth2Guard } from "../guards/oauth2.guard.js";
 import { TokenPairDto } from "../models/token-pair.dto.js";
@@ -47,7 +47,7 @@ export class OAuth2Controller {
   async getAuthOauth2Login(
     @Request()
     request: {
-      user: GamevaultUser;
+      user: PlaystashUser;
       ip: string;
       headers: { [key: string]: string };
     },
@@ -72,7 +72,7 @@ export class OAuth2Controller {
     const htmlResponse = `
     <!DOCTYPE html>
     <html lang="en">
-    <head><title>GameVault Authentication Result</title></head>
+    <head><title>PlayStash Authentication Result</title></head>
     <body>
       <p id="jsonData" style="color: transparent; user-select: text;">${jsonData}</p>
       <script>

@@ -2,8 +2,8 @@ import { ConflictException, NotFoundException } from "@nestjs/common";
 import { Repository } from "typeorm";
 import type { Mocked } from "vitest";
 import { GamesService } from "../games/games.service.js";
-import { GamevaultGame } from "../games/gamevault-game.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { UsersService } from "../users/users.service.js";
 import { State } from "./models/state.enum.js";
@@ -16,16 +16,16 @@ describe("ProgressService", () => {
   let usersService: Mocked<UsersService>;
   let gamesService: Mocked<GamesService>;
 
-  const createMockUser = (): GamevaultUser => {
-    const user = new GamevaultUser();
+  const createMockUser = (): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.role = Role.USER;
     return user;
   };
 
-  const createMockGame = (): GamevaultGame => {
-    const game = new GamevaultGame();
+  const createMockGame = (): PlaystashGame => {
+    const game = new PlaystashGame();
     game.id = 1;
     game.title = "Test Game";
     return game;

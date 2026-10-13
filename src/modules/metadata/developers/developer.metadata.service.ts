@@ -14,7 +14,7 @@ export class DeveloperMetadataService {
   ) {}
 
   async findByProviderSlug(
-    provider_slug: string = "gamevault",
+    provider_slug: string = "playstash",
     options: FindOptions = { loadDeletedEntities: false, loadRelations: false },
   ): Promise<DeveloperMetadata[]> {
     let relationPaths: string[] = [];

@@ -72,7 +72,7 @@ export class Status {
 
   @ApiProperty({
     description:
-      "Persistent unique identifier of the gamevault server. " +
+      "Persistent unique identifier of the playstash server. " +
       "This UUID is generated on first startup and persists across restarts, " +
       "allowing clients to recognize the same server even when accessed at different URLs.",
     example: "550e8400-e29b-41d4-a716-446655440000",

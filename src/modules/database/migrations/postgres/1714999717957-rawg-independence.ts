@@ -52,11 +52,11 @@ export class RawgIndependence1714999717957 implements MigrationInterface {
             ALTER TABLE "tag" DROP CONSTRAINT "UQ_289102542903593026bd16e4e1b"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
-            ADD CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("gamevault_user_id") REFERENCES "gamevault_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
+            ADD CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("playstash_user_id") REFERENCES "playstash_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
@@ -123,7 +123,7 @@ export class RawgIndependence1714999717957 implements MigrationInterface {
             CREATE INDEX "IDX_8990e34bae4dca1bed3c9ab14d" ON "bookmark" ("game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_90b8e2ed41d03127a4a9dbd839" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_90b8e2ed41d03127a4a9dbd839" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
@@ -131,7 +131,7 @@ export class RawgIndependence1714999717957 implements MigrationInterface {
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
-            ADD CONSTRAINT "FK_90b8e2ed41d03127a4a9dbd8392" FOREIGN KEY ("gamevault_user_id") REFERENCES "gamevault_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
+            ADD CONSTRAINT "FK_90b8e2ed41d03127a4a9dbd8392" FOREIGN KEY ("playstash_user_id") REFERENCES "playstash_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
   }
 }

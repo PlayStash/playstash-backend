@@ -10,7 +10,7 @@ vi.mock("../../configuration.js", () => ({
   default: {
     SERVER: { VERSION: "16.3.0" },
     WEB_UI: { VERSION: undefined },
-    VOLUMES: { CONFIG: "/tmp/gamevault-config" },
+    VOLUMES: { CONFIG: "/tmp/playstash-config" },
   },
 }));
 
@@ -163,7 +163,7 @@ describe("WebUIService", () => {
     it("should remove all files except frontend zip", async () => {
       const fs = fsExtraModule as any;
       fs.readdir.mockResolvedValue([
-        "gamevault-frontend.zip",
+        "playstash-frontend.zip",
         "dist",
         ".version",
       ]);

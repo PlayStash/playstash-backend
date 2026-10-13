@@ -13,7 +13,7 @@ import {
 import { GameType } from "../../games/models/game-type.enum.js";
 import { DatabaseEntityV12 } from "./database.v12-entity.js";
 import { DeveloperV12 } from "./developer.v12-entity.js";
-import { GamevaultUserV12 } from "./gamevault-user.v12-entity.js";
+import { PlaystashUserV12 } from "./playstash-user.v12-entity.js";
 import { GenreV12 } from "./genre.v12-entity.js";
 import { ImageV12 } from "./image.v12-entity.js";
 import { ProgressV12 } from "./progress.v12-entity.js";
@@ -233,11 +233,11 @@ export class GameV12 extends DatabaseEntityV12 {
   })
   genres?: Relation<GenreV12[]>;
 
-  @ManyToMany(() => GamevaultUserV12, (user) => user.bookmarked_games)
+  @ManyToMany(() => PlaystashUserV12, (user) => user.bookmarked_games)
   @ApiProperty({
     description: "users that bookmarked this game",
     type: () => GameV12,
     isArray: true,
   })
-  bookmarked_users?: Relation<GamevaultUserV12[]>;
+  bookmarked_users?: Relation<PlaystashUserV12[]>;
 }

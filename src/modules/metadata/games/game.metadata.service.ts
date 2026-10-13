@@ -26,7 +26,7 @@ export class GameMetadataService {
   ) {}
 
   async findByProviderSlug(
-    provider_slug: string = "gamevault",
+    provider_slug: string = "playstash",
     options: FindOptions = { loadDeletedEntities: false, loadRelations: false },
   ): Promise<GameMetadata[]> {
     let relationPaths: string[] = [];

@@ -31,31 +31,31 @@ export class InstallerParam1749920390990 implements MigrationInterface {
             DROP INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8"
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game_provider_metadata_game_metadata"
-                RENAME TO "temporary_gamevault_game_provider_metadata_game_metadata"
+            ALTER TABLE "playstash_game_provider_metadata_game_metadata"
+                RENAME TO "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_game_provider_metadata_game_metadata" (
-                "gamevault_game_id" integer NOT NULL,
+            CREATE TABLE "playstash_game_provider_metadata_game_metadata" (
+                "playstash_game_id" integer NOT NULL,
                 "game_metadata_id" integer NOT NULL,
-                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-                PRIMARY KEY ("gamevault_game_id", "game_metadata_id")
+                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+                PRIMARY KEY ("playstash_game_id", "game_metadata_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_game_provider_metadata_game_metadata"("gamevault_game_id", "game_metadata_id")
-            SELECT "gamevault_game_id",
+            INSERT INTO "playstash_game_provider_metadata_game_metadata"("playstash_game_id", "game_metadata_id")
+            SELECT "playstash_game_id",
                 "game_metadata_id"
-            FROM "temporary_gamevault_game_provider_metadata_game_metadata"
+            FROM "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_game_provider_metadata_game_metadata"
+            DROP TABLE "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "gamevault_game_provider_metadata_game_metadata" ("gamevault_game_id")
+            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "playstash_game_provider_metadata_game_metadata" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "gamevault_game_provider_metadata_game_metadata" ("game_metadata_id")
+            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "playstash_game_provider_metadata_game_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
             DROP INDEX "IDX_7af272a017b850a4ce7a6c2886"
@@ -205,32 +205,32 @@ export class InstallerParam1749920390990 implements MigrationInterface {
             DROP INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8"
         `);
     await queryRunner.query(`
-            ALTER TABLE "gamevault_game_provider_metadata_game_metadata"
-                RENAME TO "temporary_gamevault_game_provider_metadata_game_metadata"
+            ALTER TABLE "playstash_game_provider_metadata_game_metadata"
+                RENAME TO "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_game_provider_metadata_game_metadata" (
-                "gamevault_game_id" integer NOT NULL,
+            CREATE TABLE "playstash_game_provider_metadata_game_metadata" (
+                "playstash_game_id" integer NOT NULL,
                 "game_metadata_id" integer NOT NULL,
                 CONSTRAINT "FK_0b9f583ebc16b0bb8cbfaf00f8f" FOREIGN KEY ("game_metadata_id") REFERENCES "game_metadata" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-                PRIMARY KEY ("gamevault_game_id", "game_metadata_id")
+                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+                PRIMARY KEY ("playstash_game_id", "game_metadata_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "gamevault_game_provider_metadata_game_metadata"("gamevault_game_id", "game_metadata_id")
-            SELECT "gamevault_game_id",
+            INSERT INTO "playstash_game_provider_metadata_game_metadata"("playstash_game_id", "game_metadata_id")
+            SELECT "playstash_game_id",
                 "game_metadata_id"
-            FROM "temporary_gamevault_game_provider_metadata_game_metadata"
+            FROM "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            DROP TABLE "temporary_gamevault_game_provider_metadata_game_metadata"
+            DROP TABLE "temporary_playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "gamevault_game_provider_metadata_game_metadata" ("gamevault_game_id")
+            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "playstash_game_provider_metadata_game_metadata" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "gamevault_game_provider_metadata_game_metadata" ("game_metadata_id")
+            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "playstash_game_provider_metadata_game_metadata" ("game_metadata_id")
         `);
   }
 }

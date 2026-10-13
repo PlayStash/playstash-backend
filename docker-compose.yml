@@ -1,10 +1,10 @@
 services:
-  gamevault-backend:
+  playstash-backend:
     build: .
     restart: unless-stopped
     environment:
       DB_HOST: db
-      DB_USERNAME: gamevault
+      DB_USERNAME: playstash
       DB_PASSWORD: RANDOMPASSWORD
     ports:
       - 8080:8080
@@ -12,6 +12,6 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: gamevault
+      POSTGRES_USER: playstash
       POSTGRES_PASSWORD: RANDOMPASSWORD
-      POSTGRES_DB: gamevault
+      POSTGRES_DB: playstash

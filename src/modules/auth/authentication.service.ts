@@ -10,11 +10,11 @@ import { createHash } from "crypto";
 import ms, { type StringValue } from "ms";
 import { LessThan, MoreThan, Repository } from "typeorm";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { type RegisterUserDto } from "../users/models/register-user.dto.js";
 import { UsersService } from "../users/users.service.js";
-import { type GamevaultJwtPayload } from "./models/gamevault-jwt-payload.interface.js";
+import { type PlaystashJwtPayload } from "./models/playstash-jwt-payload.interface.js";
 import { type RefreshTokenDto } from "./models/refresh-token.dto.js";
 import { type TokenPairDto } from "./models/token-pair.dto.js";
 import { Session } from "./session.entity.js";
@@ -27,7 +27,7 @@ export class AuthenticationService implements OnModuleInit {
     private readonly jwtService: JwtService,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   async onModuleInit() {
@@ -53,7 +53,7 @@ export class AuthenticationService implements OnModuleInit {
   }
 
   async login(
-    requestUser: GamevaultUser,
+    requestUser: PlaystashUser,
     ipAddress: string,
     userAgent: string,
   ): Promise<TokenPairDto> {
@@ -61,7 +61,7 @@ export class AuthenticationService implements OnModuleInit {
       requestUser.username,
     );
 
-    const payload: GamevaultJwtPayload = {
+    const payload: PlaystashJwtPayload = {
       sub: user.id.toString(),
       name: [user.first_name, user.last_name].filter(Boolean).join(" ") || "",
       given_name: user.first_name ?? "",
@@ -106,7 +106,7 @@ export class AuthenticationService implements OnModuleInit {
   }
 
   async refresh(
-    user: GamevaultUser,
+    user: PlaystashUser,
     ipAddress: string,
     userAgent: string,
     currentRefreshToken: string,
@@ -132,7 +132,7 @@ export class AuthenticationService implements OnModuleInit {
     }
 
     // Generate new tokens
-    const payload: GamevaultJwtPayload = {
+    const payload: PlaystashJwtPayload = {
       sub: user.id.toString(),
       name: [user.first_name, user.last_name].filter(Boolean).join(" ") || "",
       given_name: user.first_name ?? "",
@@ -166,7 +166,7 @@ export class AuthenticationService implements OnModuleInit {
     };
   }
 
-  async register(dto: RegisterUserDto): Promise<GamevaultUser> {
+  async register(dto: RegisterUserDto): Promise<PlaystashUser> {
     return this.usersService.register(dto);
   }
 
@@ -216,7 +216,7 @@ export class AuthenticationService implements OnModuleInit {
     return !session;
   }
 
-  async getUserSessions(user: GamevaultUser): Promise<Session[]> {
+  async getUserSessions(user: PlaystashUser): Promise<Session[]> {
     return this.sessionRepository.find({
       where: {
         user: { id: user.id },
@@ -229,7 +229,7 @@ export class AuthenticationService implements OnModuleInit {
     });
   }
 
-  async revokeAllUserSessions(user: GamevaultUser): Promise<void> {
+  async revokeAllUserSessions(user: PlaystashUser): Promise<void> {
     await this.sessionRepository.update(
       {
         user: { id: user.id },

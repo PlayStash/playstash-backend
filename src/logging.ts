@@ -4,12 +4,12 @@ import { consoleFormat } from "winston-console-format";
 import DailyRotateFile from "winston-daily-rotate-file";
 
 import configuration from "./configuration.js";
-import { GamevaultGame } from "./modules/games/gamevault-game.entity.js";
+import { PlaystashGame } from "./modules/games/playstash-game.entity.js";
 import { Media } from "./modules/media/media.entity.js";
 import { type Metadata } from "./modules/metadata/models/metadata.interface.js";
 import { type MetadataProvider } from "./modules/metadata/providers/abstract.metadata-provider.service.js";
 import { Progress } from "./modules/progresses/progress.entity.js";
-import { GamevaultUser } from "./modules/users/gamevault-user.entity.js";
+import { PlaystashUser } from "./modules/users/playstash-user.entity.js";
 
 const transports: winston.transport[] = [];
 
@@ -39,7 +39,7 @@ if (
   transports.push(
     new DailyRotateFile({
       level: "debug",
-      filename: "gamevault-backend-%DATE%.log",
+      filename: "playstash-backend-%DATE%.log",
       dirname: configuration.VOLUMES.LOGS,
       datePattern: "YYYY-MM-DD",
       maxFiles: "14d",
@@ -67,7 +67,7 @@ const stream = {
   },
 };
 
-function logGamevaultGame(game: GamevaultGame | undefined) {
+function logPlaystashGame(game: PlaystashGame | undefined) {
   const resolvedPath =
     game?.file_path ||
     game?.versions?.find((version) => !!version.file_path)?.file_path;
@@ -79,7 +79,7 @@ function logGamevaultGame(game: GamevaultGame | undefined) {
   };
 }
 
-function logGamevaultUser(user: GamevaultUser | undefined) {
+function logPlaystashUser(user: PlaystashUser | undefined) {
   return {
     id: user?.id,
     username: user?.username,
@@ -103,8 +103,8 @@ function logProgress(progress: Progress) {
     minutes_played: progress?.minutes_played,
     state: progress?.state,
     last_played_at: progress?.last_played_at,
-    user: logGamevaultUser(progress?.user),
-    game: logGamevaultGame(progress?.game),
+    user: logPlaystashUser(progress?.user),
+    game: logPlaystashGame(progress?.game),
   };
 }
 
@@ -123,14 +123,14 @@ function logMedia(media: Media) {
     source_url: media?.source_url,
     file_path: media?.file_path,
     type: media?.type,
-    uploader: logGamevaultUser(media?.uploader),
+    uploader: logPlaystashUser(media?.uploader),
   };
 }
 
 export default logger;
 export {
-  logGamevaultGame,
-  logGamevaultUser,
+  logPlaystashGame,
+  logPlaystashUser,
   logMedia,
   logMetadata,
   logMetadataProvider,

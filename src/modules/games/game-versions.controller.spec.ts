@@ -1,6 +1,6 @@
 import type { Mocked } from "vitest";
 import { OtpService } from "../otp/otp.service.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
@@ -13,9 +13,9 @@ describe("GameVersionsController", () => {
   let otpService: Mocked<OtpService>;
 
   const createMockUser = (
-    overrides: Partial<GamevaultUser> = {},
-  ): GamevaultUser => {
-    const user = new GamevaultUser();
+    overrides: Partial<PlaystashUser> = {},
+  ): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.role = Role.USER;

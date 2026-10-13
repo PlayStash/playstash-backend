@@ -29,7 +29,7 @@ export class NewIndexes1713526846245 implements MigrationInterface {
             CREATE UNIQUE INDEX IF NOT EXISTS "IDX_7770cb331bdc54951bb9046fa9" ON "game" ("file_path")
         `);
     await queryRunner.query(`
-            CREATE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "gamevault_user" ("username")
+            CREATE INDEX IF NOT EXISTS "IDX_4c835305e86b28e416cfe13dac" ON "playstash_user" ("username")
         `);
   }
 

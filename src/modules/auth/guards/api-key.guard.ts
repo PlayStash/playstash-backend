@@ -10,7 +10,7 @@ import { Reflector } from "@nestjs/core";
 import { type Request } from "express";
 import { type Socket } from "socket.io";
 import type { AppConfiguration } from "../../../configuration.js";
-import { InjectGamevaultConfig } from "../../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../../decorators/inject-playstash-config.decorator.js";
 import { SKIP_GUARDS_KEY } from "../../../decorators/skip-guards.decorator.js";
 import { ApiKeyService } from "../../users/api-key.service.js";
 import { Role } from "../../users/models/role.enum.js";
@@ -22,7 +22,7 @@ export class ApiKeyGuard implements CanActivate {
   constructor(
     private readonly apiKeyService: ApiKeyService,
     private readonly reflector: Reflector,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

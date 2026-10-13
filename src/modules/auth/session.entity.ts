@@ -9,21 +9,21 @@ import {
 } from "typeorm";
 
 import { DatabaseEntity } from "../database/database.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 
 @Entity()
 @Index(["user", "revoked", "expires_at"]) // For querying active sessions
 @Index(["refresh_token_hash"]) // For token revocation checks
 export class Session extends DatabaseEntity {
-  @ManyToOne(() => GamevaultUser, (user) => user.sessions, {
+  @ManyToOne(() => PlaystashUser, (user) => user.sessions, {
     onDelete: "CASCADE",
   })
   @JoinColumn()
   @ApiProperty({
-    type: () => GamevaultUser,
+    type: () => PlaystashUser,
     description: "The user this session belongs to",
   })
-  user!: Relation<GamevaultUser>;
+  user!: Relation<PlaystashUser>;
 
   @Column()
   @ApiProperty({

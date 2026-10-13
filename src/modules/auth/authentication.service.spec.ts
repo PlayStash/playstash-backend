@@ -3,7 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import { Repository } from "typeorm";
 import type { Mocked } from "vitest";
 import configuration from "../../configuration.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
 import { UsersService } from "../users/users.service.js";
 import { AuthenticationService } from "./authentication.service.js";
@@ -16,9 +16,9 @@ describe("AuthenticationService", () => {
   let sessionRepository: Mocked<Repository<Session>>;
 
   const createMockUser = (
-    overrides: Partial<GamevaultUser> = {},
-  ): GamevaultUser => {
-    const user = new GamevaultUser();
+    overrides: Partial<PlaystashUser> = {},
+  ): PlaystashUser => {
+    const user = new PlaystashUser();
     user.id = 1;
     user.username = "testuser";
     user.email = "test@example.com";

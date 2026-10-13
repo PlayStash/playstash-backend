@@ -21,7 +21,7 @@ import configuration from "../../../configuration.js";
 import { ConditionalRegistration } from "../../../decorators/conditional-registration.decorator.js";
 import { DisableApiIf } from "../../../decorators/disable-api-if.decorator.js";
 import { SkipGuards } from "../../../decorators/skip-guards.decorator.js";
-import { GamevaultUser } from "../../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../../users/playstash-user.entity.js";
 import { RegisterUserDto } from "../../users/models/register-user.dto.js";
 import { Role } from "../../users/models/role.enum.js";
 import { AuthenticationService } from "../authentication.service.js";
@@ -53,7 +53,7 @@ export class BasicAuthController {
   async getAuthBasicLogin(
     @Request()
     request: {
-      user: GamevaultUser;
+      user: PlaystashUser;
       ip: string;
       headers: { [key: string]: string };
     },
@@ -77,14 +77,14 @@ export class BasicAuthController {
       "The user may has to be activated afterwards to be active. This endpoint only works if registration is enabled",
     operationId: "postAuthBasicRegister",
   })
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   @ApiBody({ type: () => RegisterUserDto })
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   @ConditionalRegistration
   async postAuthBasicRegister(
     @Body() dto: RegisterUserDto,
-    @Request() req: { user: GamevaultUser },
-  ): Promise<GamevaultUser> {
+    @Request() req: { user: PlaystashUser },
+  ): Promise<PlaystashUser> {
     if (
       configuration.SERVER.REGISTRATION_DISABLED &&
       (req.user?.role ?? 0) < Role.ADMIN

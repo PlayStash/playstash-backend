@@ -4,7 +4,7 @@ import {
   ExpressAdapter,
   type NestExpressApplication,
 } from "@nestjs/platform-express";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { SwaggerModule } from "@nestjs/swagger";
 import compression from "compression";
 import cookieparser from "cookie-parser";
 import fsExtra from "fs-extra";
@@ -24,6 +24,7 @@ import configuration, {
 import { LoggingExceptionFilter } from "./filters/http-exception.filter.js";
 import logger, { stream } from "./logging.js";
 import { LegacyRoutesMiddleware } from "./middleware/legacy-routes.middleware.js";
+import { createPlaystashApiDocument } from "./openapi.js";
 import loadPlugins from "./plugin.js";
 const { readFileSync } = fsExtra;
 
@@ -117,88 +118,7 @@ async function bootstrap(): Promise<void> {
 
   // Provide API Specification
   if (configuration.WEB_UI.ENABLED) {
-    SwaggerModule.setup(
-      "api/docs",
-      app,
-      SwaggerModule.createDocument(
-        app,
-        new DocumentBuilder()
-          .setTitle("GameVault Backend Server")
-          .setContact("Phalcode", "https://phalco.de", "contact@phalco.de")
-          .setExternalDoc("Documentation", "https://gamevau.lt")
-          .setDescription(
-            "Backend for GameVault, the self-hosted gaming platform for drm-free games",
-          )
-          .setVersion(configuration.SERVER.VERSION)
-          .addBearerAuth(
-            {
-              type: "http",
-              scheme: "bearer",
-              bearerFormat: "JWT",
-              description:
-                "Access token obtained from /api/auth/*/login endpoint.",
-            },
-            "bearer",
-          )
-          .addBasicAuth(
-            {
-              type: "http",
-              scheme: "basic",
-              description: "Basic Authentication",
-            },
-            "basic",
-          )
-          .addApiKey(
-            {
-              type: "apiKey",
-              name: "X-Api-Key",
-              in: "header",
-              description: "API-Key Authentication",
-            },
-            "apikey",
-          )
-          .addServer(
-            `http://localhost:${configuration.SERVER.PORT}`,
-            "Local GameVault Server",
-          )
-          .addServer(`https://demo.gamevau.lt`, "Demo GameVault Server")
-          .setLicense(
-            "Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)",
-            "https://github.com/Phalcode/gamevault-backend/LICENSE",
-          )
-          .build(),
-      ),
-    );
-    // TODO: Leads to EACCES: permission denied, mkdir '/root/.npm/_cacache/tmp' running in docker for some reason
-    //await AsyncApiModule.setup(
-    //  "api/docs/async",
-    //  app,
-    //  AsyncApiModule.createDocument(
-    //    app,
-    //    new AsyncApiDocumentBuilder()
-    //      .setTitle("GameVault Backend Server")
-    //      .setDescription(
-    //        "Asynchronous Socket.IO Backend for GameVault, the self-hosted gaming platform for drm-free games. To make a request, you need to authenticate with the X-Api-Key Header during the handshake. You can get this secret by using the /users/me REST API.",
-    //      )
-    //      .setContact("Phalcode", "https://phalco.de", "contact@phalco.de")
-    //      .setExternalDoc("Documentation", "https://gamevau.lt")
-    //      .setDefaultContentType("application/json")
-    //      .setVersion(configuration.SERVER.VERSION)
-    //      .addServer("Local GameVault Server", {
-    //        url: "localhost:8080",
-    //        protocol: "ws",
-    //      })
-    //      .addServer("Demo GameVault Server", {
-    //        url: "demo.gamevau.lt",
-    //        protocol: "wss",
-    //      })
-    //      .setLicense(
-    //        "Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)",
-    //        "https://github.com/Phalcode/gamevault-backend/LICENSE",
-    //      )
-    //      .build(),
-    //  ),
-    //);
+    SwaggerModule.setup("api/docs", app, createPlaystashApiDocument(app));
   }
 
   // Redirect /health to /status
@@ -240,7 +160,7 @@ async function bootstrap(): Promise<void> {
 
   logger.log({
     context: "Initialization",
-    message: `Started GameVault Server.`,
+    message: `Started PlayStash Server.`,
     version: configuration.SERVER.VERSION,
     port: configuration.SERVER.PORT,
     httpsPort: configuration.SERVER.HTTPS.ENABLED

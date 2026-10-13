@@ -1,7 +1,7 @@
 import fsExtra from "fs-extra";
 import path, { join, resolve } from "path";
 import configuration from "./configuration.js";
-import { type GameVaultPluginModule } from "./globals.js";
+import { type PlayStashPluginModule } from "./globals.js";
 import { default as logger } from "./logging.js";
 const { copy, mkdir, readdir } = fsExtra;
 
@@ -55,7 +55,7 @@ export default async function loadPlugins() {
     });
 
     for (const plugin of plugins) {
-      const instance: GameVaultPluginModule = new plugin.default();
+      const instance: PlayStashPluginModule = new plugin.default();
       logger.log({
         context: "PluginLoader",
         message: `Loaded plugin.`,

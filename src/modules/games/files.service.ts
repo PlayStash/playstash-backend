@@ -29,11 +29,11 @@ const { add, list } = node7z;
 import { Cron, SchedulerRegistry } from "@nestjs/schedule";
 import configuration from "../../configuration.js";
 import globals, { toFindOptionsRelations } from "../../globals.js";
-import { logGamevaultGame } from "../../logging.js";
+import { logPlaystashGame } from "../../logging.js";
 import { MetadataService } from "../metadata/metadata.service.js";
 import { GameVersion } from "./game-version.entity.js";
 import { GamesService } from "./games.service.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 import { type File } from "./models/file.model.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { GameType } from "./models/game-type.enum.js";
@@ -282,7 +282,7 @@ export class FilesService implements OnApplicationBootstrap {
       size,
     });
 
-    const gameToIndex = new GamevaultGame();
+    const gameToIndex = new PlaystashGame();
     const filename = basename(path);
     gameToIndex.size = size;
     gameToIndex.file_path = path;
@@ -296,7 +296,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     try {
       // Check if the game already exists in the database
-      const existingGameTuple: [GameExistence, GamevaultGame | undefined] =
+      const existingGameTuple: [GameExistence, PlaystashGame | undefined] =
         await this.gamesService.checkIfExistsInDatabase(gameToIndex);
       const existingGame = existingGameTuple[1];
 
@@ -311,8 +311,8 @@ export class FilesService implements OnApplicationBootstrap {
       // Log the corresponding message based on game existence
       this.logger.debug({
         message: logMessageMap[existingGameTuple[0]],
-        game: logGamevaultGame(gameToIndex),
-        ...(existingGame && { existingGame: logGamevaultGame(existingGame) }),
+        game: logPlaystashGame(gameToIndex),
+        ...(existingGame && { existingGame: logPlaystashGame(existingGame) }),
       });
 
       // Handle different cases of game existence
@@ -374,8 +374,8 @@ export class FilesService implements OnApplicationBootstrap {
   /** Upserts one indexed file as an available version of the game. */
   private async upsertIndexedVersion(
     id: number,
-    indexedGame: GamevaultGame,
-  ): Promise<GamevaultGame> {
+    indexedGame: PlaystashGame,
+  ): Promise<PlaystashGame> {
     const gameToUpdate = await this.gamesService.findOneByGameIdOrFail(id, {
       loadDeletedEntities: false,
     });
@@ -387,7 +387,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     const selectedVersion = selectDefaultGameVersion(availableVersions);
 
-    const gamePatch = Object.assign(new GamevaultGame(), { id });
+    const gamePatch = Object.assign(new PlaystashGame(), { id });
     this.applyVersionToGame(gamePatch, selectedVersion);
     gamePatch.download_count = gameToUpdate.download_count;
 
@@ -419,7 +419,7 @@ export class FilesService implements OnApplicationBootstrap {
     });
     this.logger.log({
       message: `Updated game versions based on file changes.`,
-      game: logGamevaultGame(updatedGame),
+      game: logPlaystashGame(updatedGame),
     });
     return updatedGame;
   }
@@ -427,7 +427,7 @@ export class FilesService implements OnApplicationBootstrap {
   /** Upserts one normalized release row for a game and indexed file. */
   private async upsertReleaseRecord(
     gameId: number,
-    indexedGame: GamevaultGame,
+    indexedGame: PlaystashGame,
   ): Promise<void> {
     const now = new Date();
 
@@ -441,7 +441,7 @@ export class FilesService implements OnApplicationBootstrap {
 
     const versionPatch = Object.assign(new GameVersion(), {
       id: existingVersion?.id,
-      game: { id: gameId } as GamevaultGame,
+      game: { id: gameId } as PlaystashGame,
       file_path: indexedGame.file_path,
       version: indexedGame.version,
       size: indexedGame.size,
@@ -457,7 +457,7 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Returns all versions from normalized storage, falling back to legacy columns. */
   private async listAvailableVersionsFromStorage(
-    game: GamevaultGame,
+    game: PlaystashGame,
   ): Promise<GameVersion[]> {
     const versions = await this.gameVersionRepository.find({
       where: {
@@ -488,14 +488,14 @@ export class FilesService implements OnApplicationBootstrap {
   }
 
   /** Converts legacy single-file games into a normalized versions structure. */
-  private normalizeVersions(game: GamevaultGame): GameVersion[] {
+  private normalizeVersions(game: PlaystashGame): GameVersion[] {
     if (!game.file_path) {
       return [];
     }
     return [
       Object.assign(new GameVersion(), {
         id: undefined,
-        game: { id: game.id } as GamevaultGame,
+        game: { id: game.id } as PlaystashGame,
         file_path: game.file_path,
         version: game.version,
         size: game.size || 0n,
@@ -508,7 +508,7 @@ export class FilesService implements OnApplicationBootstrap {
   }
 
   /** Applies one version to legacy top-level game fields. */
-  private applyVersionToGame(game: GamevaultGame, version: GameVersion): void {
+  private applyVersionToGame(game: PlaystashGame, version: GameVersion): void {
     game.file_path = version.file_path;
     game.version = version.version;
     game.size = BigInt(version.size || 0);
@@ -849,7 +849,7 @@ export class FilesService implements OnApplicationBootstrap {
    */
   private async checkIntegrity(
     filesInFileSystem?: File[],
-  ): Promise<GamevaultGame[]> {
+  ): Promise<PlaystashGame[]> {
     const gamesInFileSystem = filesInFileSystem || (await this.readAllFiles());
     const gamesInDatabase = await this.gamesService.find({
       loadDeletedEntities: false,
@@ -880,7 +880,7 @@ export class FilesService implements OnApplicationBootstrap {
     await this.cleanupDanglingVersionsForDeletedGames();
 
     const fsPaths = new Set(gamesInFileSystem.map((f) => f.path));
-    const checkedGames: GamevaultGame[] = [];
+    const checkedGames: PlaystashGame[] = [];
     for (const gameInDatabase of gamesInDatabase) {
       try {
         const persistedVersions = await this.gameVersionRepository.find({
@@ -951,7 +951,7 @@ export class FilesService implements OnApplicationBootstrap {
           }
 
           const selectedVersion = selectDefaultGameVersion(existingVersions);
-          const gamePatch = Object.assign(new GamevaultGame(), {
+          const gamePatch = Object.assign(new PlaystashGame(), {
             id: gameInDatabase.id,
           });
           this.applyVersionToGame(gamePatch, selectedVersion);
@@ -1103,7 +1103,7 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Resolves a concrete version to download for this game. */
   private async resolveDownloadVersion(
-    game: GamevaultGame,
+    game: PlaystashGame,
     requestedVersionId: number,
   ): Promise<GameVersion> {
     const availableVersions = sortGameVersions(
@@ -1130,7 +1130,7 @@ export class FilesService implements OnApplicationBootstrap {
 
   /** Resolves the default/latest downloadable version for legacy clients. */
   private async resolveLatestDownloadVersion(
-    game: GamevaultGame,
+    game: PlaystashGame,
   ): Promise<GameVersion> {
     const availableVersions = sortGameVersions(
       await this.listAvailableVersionsFromStorage(game),

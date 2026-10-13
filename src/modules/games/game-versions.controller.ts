@@ -16,6 +16,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
@@ -25,8 +26,8 @@ import configuration from "../../configuration.js";
 import { DisableApiIf } from "../../decorators/disable-api-if.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
 import { OtpService } from "../otp/otp.service.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
 import { Role } from "../users/models/role.enum.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { UsersService } from "../users/users.service.js";
 import { FilesService } from "./files.service.js";
 
@@ -42,6 +43,8 @@ export class GameVersionsController {
   ) {}
 
   @Delete(":game_id/versions/:version_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
+  @ApiParam({ name: "version_id", required: true, type: Number })
   @ApiOperation({
     summary: "deletes a specific game version file from disk",
     description:
@@ -61,6 +64,8 @@ export class GameVersionsController {
   }
 
   @Get(":game_id/versions/:version_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
+  @ApiParam({ name: "version_id", required: true, type: Number })
   @ApiHeader({
     name: "X-Download-Speed-Limit",
     required: false,
@@ -84,7 +89,7 @@ export class GameVersionsController {
   @ApiOkResponse({ type: () => StreamableFile })
   @Header("Accept-Ranges", "bytes")
   async downloadGameVersion(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Param("game_id", ParseIntPipe) gameId: number,
     @Param("version_id", ParseIntPipe) versionId: number,
     @Res({ passthrough: true }) response: Response,

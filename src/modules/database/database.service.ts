@@ -16,7 +16,7 @@ import { promisify } from "util";
 const { copyFile, createReadStream, pathExists, stat, writeFile } = fsExtra;
 
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 
 @Injectable()
 export class DatabaseService {
@@ -25,7 +25,7 @@ export class DatabaseService {
 
   constructor(
     private readonly dataSource: DataSource,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   async backup(password: string): Promise<StreamableFile> {
@@ -139,9 +139,9 @@ export class DatabaseService {
       size: file.size,
     });
     try {
-      await this.backupPostgresql("/tmp/gamevault_database_pre_restore.db");
+      await this.backupPostgresql("/tmp/playstash_database_pre_restore.db");
 
-      await writeFile("/tmp/gamevault_database_restore.db", file.buffer);
+      await writeFile("/tmp/playstash_database_restore.db", file.buffer);
 
       await this.execPromise(
         `dropdb --if-exists -f -w -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} ${this.config.DB.DATABASE}`,
@@ -155,7 +155,7 @@ export class DatabaseService {
 
       try {
         await this.execPromise(
-          `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} /tmp/gamevault_database_restore.db`,
+          `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} /tmp/playstash_database_restore.db`,
           { env: { PGPASSWORD: this.config.DB.PASSWORD } },
         );
 
@@ -173,7 +173,7 @@ export class DatabaseService {
         error,
       });
 
-      if (await pathExists("/tmp/gamevault_database_pre_restore.db")) {
+      if (await pathExists("/tmp/playstash_database_pre_restore.db")) {
         this.logger.log("Restoring pre-restore database.");
         try {
           await this.execPromise(
@@ -187,7 +187,7 @@ export class DatabaseService {
           );
 
           await this.execPromise(
-            `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} /tmp/gamevault_database_pre_restore.db`,
+            `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} /tmp/playstash_database_pre_restore.db`,
             { env: { PGPASSWORD: this.config.DB.PASSWORD } },
           );
           this.logger.log("Restored pre-restore database.");
@@ -213,7 +213,7 @@ export class DatabaseService {
     });
     try {
       if (await pathExists(`${this.config.VOLUMES.SQLITEDB}/database.sqlite`)) {
-        this.backupSqlite("/tmp/gamevault_database_pre_restore.db");
+        this.backupSqlite("/tmp/playstash_database_pre_restore.db");
       }
       await writeFile(
         `${this.config.VOLUMES.SQLITEDB}/database.sqlite`,
@@ -221,10 +221,10 @@ export class DatabaseService {
       );
     } catch (error) {
       this.logger.error({ message: "Error restoring SQLITE database", error });
-      if (await pathExists("/tmp/gamevault_database_pre_restore.db")) {
+      if (await pathExists("/tmp/playstash_database_pre_restore.db")) {
         this.logger.log("Restoring pre-restore database.");
         await copyFile(
-          "/tmp/gamevault_database_pre_restore.db",
+          "/tmp/playstash_database_pre_restore.db",
           `${this.config.VOLUMES.SQLITEDB}/database.sqlite`,
         );
         this.logger.log("Restored pre-restore database.");
@@ -243,7 +243,7 @@ export class DatabaseService {
   private generateBackupFilepath(): string {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
-    return `/tmp/gamevault_${this.config.SERVER.VERSION}_database_backup_${timestamp}.db`;
+    return `/tmp/playstash_${this.config.SERVER.VERSION}_database_backup_${timestamp}.db`;
   }
 
   private async createStreamableFile(

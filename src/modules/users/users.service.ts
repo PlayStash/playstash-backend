@@ -24,16 +24,16 @@ import {
   Repository,
 } from "typeorm";
 import type { AppConfiguration } from "../../configuration.js";
-import { InjectGamevaultConfig } from "../../decorators/inject-gamevault-config.decorator.js";
+import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
 import {
   type FindOptions,
   toFindOptionsRelations,
   toFindOptionsSelect,
 } from "../../globals.js";
-import { logGamevaultGame } from "../../logging.js";
+import { logPlaystashGame } from "../../logging.js";
 import { GamesService } from "../games/games.service.js";
 import { MediaService } from "../media/media.service.js";
-import { GamevaultUser } from "./gamevault-user.entity.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { type RegisterUserDto } from "./models/register-user.dto.js";
 import { Role } from "./models/role.enum.js";
 import { type UpdateUserDto } from "./models/update-user.dto.js";
@@ -45,14 +45,14 @@ export class UsersService implements OnApplicationBootstrap {
   private readonly logger = new Logger(this.constructor.name);
 
   constructor(
-    @InjectRepository(GamevaultUser)
-    private readonly userRepository: Repository<GamevaultUser>,
+    @InjectRepository(PlaystashUser)
+    private readonly userRepository: Repository<PlaystashUser>,
     @Inject(forwardRef(() => MediaService))
     // Cyclic service reference (ESM): intentionally loosely typed to avoid design:paramtypes TDZ
     private readonly mediaService: any,
     @Inject(forwardRef(() => GamesService))
     private readonly gamesService: GamesService,
-    @InjectGamevaultConfig() private readonly config: AppConfiguration,
+    @InjectPlaystashConfig() private readonly config: AppConfiguration,
   ) {}
 
   async onApplicationBootstrap() {
@@ -98,7 +98,7 @@ export class UsersService implements OnApplicationBootstrap {
   public async findOneByUserIdOrFail(
     id: number,
     options: FindOptions = { loadRelations: true, loadDeletedEntities: true },
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     let relationPaths: string[] = [];
 
     if (options.loadRelations) {
@@ -116,7 +116,7 @@ export class UsersService implements OnApplicationBootstrap {
 
     const relations =
       relationPaths.length > 0
-        ? toFindOptionsRelations<GamevaultUser>(relationPaths)
+        ? toFindOptionsRelations<PlaystashUser>(relationPaths)
         : undefined;
 
     const where = options.loadDeletedEntities
@@ -142,7 +142,7 @@ export class UsersService implements OnApplicationBootstrap {
   public async findOneByUsernameOrFail(
     username: string,
     options: FindOptions = { loadRelations: true, loadDeletedEntities: true },
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     let relationPaths: string[] = [];
 
     if (options.loadRelations) {
@@ -154,7 +154,7 @@ export class UsersService implements OnApplicationBootstrap {
 
     const relations =
       relationPaths.length > 0
-        ? toFindOptionsRelations<GamevaultUser>(relationPaths)
+        ? toFindOptionsRelations<PlaystashUser>(relationPaths)
         : undefined;
 
     const where = options.loadDeletedEntities
@@ -180,8 +180,8 @@ export class UsersService implements OnApplicationBootstrap {
 
   public async find(
     includeHiddenAndDeleted: boolean = false,
-  ): Promise<GamevaultUser[]> {
-    const query: FindManyOptions<GamevaultUser> = {
+  ): Promise<PlaystashUser[]> {
+    const query: FindManyOptions<PlaystashUser> = {
       order: { id: "ASC" },
       withDeleted: includeHiddenAndDeleted,
       relationLoadStrategy: "query",
@@ -194,7 +194,7 @@ export class UsersService implements OnApplicationBootstrap {
   }
 
   /** Register a new user */
-  public async register(dto: RegisterUserDto): Promise<GamevaultUser> {
+  public async register(dto: RegisterUserDto): Promise<PlaystashUser> {
     await this.throwIfAlreadyExists(dto.username, dto.email);
     const isFirstUser = (await this.userRepository.count()) === 0;
     const isAdministrator =
@@ -202,7 +202,7 @@ export class UsersService implements OnApplicationBootstrap {
     const isActivated =
       this.config.SERVER.ACCOUNT_ACTIVATION_DISABLED || isAdministrator;
 
-    const user = new GamevaultUser();
+    const user = new PlaystashUser();
     user.username = dto.username;
     user.password = await hash(dto.password, 10);
     user.api_key = randomBytes(32).toString("hex");
@@ -229,8 +229,8 @@ export class UsersService implements OnApplicationBootstrap {
     username?: string;
     email?: string;
     idp_id?: string; // TODO: Could Implement search for idp_id
-  }): Promise<GamevaultUser> {
-    const where: FindOptionsWhere<GamevaultUser>[] = [];
+  }): Promise<PlaystashUser> {
+    const where: FindOptionsWhere<PlaystashUser>[] = [];
 
     if (searchBy.id != null) {
       where.push({ id: searchBy.id });
@@ -251,7 +251,7 @@ export class UsersService implements OnApplicationBootstrap {
     const user = await this.userRepository
       .findOneOrFail({
         where,
-        select: toFindOptionsSelect<GamevaultUser>([
+        select: toFindOptionsSelect<PlaystashUser>([
           "username",
           "email",
           "password",
@@ -289,8 +289,8 @@ export class UsersService implements OnApplicationBootstrap {
     return user;
   }
 
-  public cleanConfidentialUser(user: GamevaultUser): GamevaultUser {
-    delete (user as Partial<GamevaultUser>).password;
+  public cleanConfidentialUser(user: PlaystashUser): PlaystashUser {
+    delete (user as Partial<PlaystashUser>).password;
     delete user.api_key;
     return user;
   }
@@ -300,7 +300,7 @@ export class UsersService implements OnApplicationBootstrap {
     id: number,
     dto: UpdateUserDto,
     isAdmin = false,
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     const user = await this.findOneByUserIdOrFail(id, { loadRelations: false });
     const logUpdate = (
       property: string,
@@ -388,7 +388,7 @@ export class UsersService implements OnApplicationBootstrap {
 
   private async updateUsername(
     dto: UpdateUserDto,
-    user: GamevaultUser,
+    user: PlaystashUser,
   ): Promise<void> {
     const username = dto.username;
     if (username == null) {
@@ -402,7 +402,7 @@ export class UsersService implements OnApplicationBootstrap {
 
   private async updateEmail(
     dto: UpdateUserDto,
-    user: GamevaultUser,
+    user: PlaystashUser,
   ): Promise<void> {
     const email = dto.email;
     if (email == null) {
@@ -416,7 +416,7 @@ export class UsersService implements OnApplicationBootstrap {
 
   private async updateBirthDate(
     dto: UpdateUserDto,
-    user: GamevaultUser,
+    user: PlaystashUser,
     isAdmin: boolean,
   ): Promise<void> {
     if (
@@ -435,13 +435,13 @@ export class UsersService implements OnApplicationBootstrap {
   }
 
   /** Soft deletes a user with the specified ID. */
-  public async delete(id: number): Promise<GamevaultUser> {
+  public async delete(id: number): Promise<PlaystashUser> {
     const user = await this.findOneByUserIdOrFail(id);
     return this.userRepository.softRemove(user);
   }
 
   /** Recovers a deleted user with the specified ID. */
-  public async recover(id: number): Promise<GamevaultUser> {
+  public async recover(id: number): Promise<PlaystashUser> {
     const user = await this.findOneByUserIdOrFail(id);
     return this.userRepository.recover(user);
   }
@@ -517,7 +517,7 @@ export class UsersService implements OnApplicationBootstrap {
 
     await this.userRepository
       .createQueryBuilder()
-      .relation(GamevaultUser, "bookmarked_games")
+      .relation(PlaystashUser, "bookmarked_games")
       .of(user)
       .add(game);
 
@@ -526,7 +526,7 @@ export class UsersService implements OnApplicationBootstrap {
     this.logger.log({
       message: "User bookmarked game.",
       user: user.username,
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
     });
     return user;
   }
@@ -547,7 +547,7 @@ export class UsersService implements OnApplicationBootstrap {
 
     await this.userRepository
       .createQueryBuilder()
-      .relation(GamevaultUser, "bookmarked_games")
+      .relation(PlaystashUser, "bookmarked_games")
       .of(user)
       .remove(game);
 
@@ -558,7 +558,7 @@ export class UsersService implements OnApplicationBootstrap {
     this.logger.log({
       message: "User unbookmarked game.",
       user: user.username,
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
     });
 
     return user;
@@ -618,7 +618,7 @@ export class UsersService implements OnApplicationBootstrap {
   }
 
   /** Filters deleted progresses from the user. */
-  private filterDeletedProgresses(user: GamevaultUser) {
+  private filterDeletedProgresses(user: PlaystashUser) {
     if (user.progresses) {
       user.progresses = user.progresses.filter(
         (progress) => !progress.deleted_at,

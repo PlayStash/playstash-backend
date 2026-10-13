@@ -15,8 +15,8 @@ import {
 import lodash from "lodash";
 import { stringSimilarity } from "string-similarity-js";
 import globals from "../../../globals.js";
-import { logGamevaultGame } from "../../../logging.js";
-import { GamevaultGame } from "../../games/gamevault-game.entity.js";
+import { logPlaystashGame } from "../../../logging.js";
+import { PlaystashGame } from "../../games/playstash-game.entity.js";
 import { MediaService } from "../../media/media.service.js";
 import { DeveloperMetadata } from "../developers/developer.metadata.entity.js";
 import { DeveloperMetadataService } from "../developers/developer.metadata.service.js";
@@ -60,7 +60,7 @@ export abstract class MetadataProvider
   })
   @IsNotIn(globals.RESERVED_PROVIDER_SLUGS, {
     message:
-      "Invalid slug: The terms 'gamevault' and 'user' are reserved slugs.",
+      "Invalid slug: The terms 'playstash' and 'user' are reserved slugs.",
   })
   public slug!: string;
 
@@ -113,7 +113,7 @@ export abstract class MetadataProvider
    * @throws NotFoundException if no matching games are found.
    */
   public async getBestMatch(
-    game: GamevaultGame,
+    game: PlaystashGame,
   ): Promise<MinimalGameMetadataDto> {
     // Search for the game using all available metadata providers but remove Edition Tags in the search.
     const gameResults = await this.search(
@@ -137,7 +137,7 @@ export abstract class MetadataProvider
       if (!cleanedGameTitle || !cleanedGameResultTitle) {
         this.logger.warn({
           message: "Could not clean game title.",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           gameResult,
         });
         continue;
@@ -175,7 +175,7 @@ export abstract class MetadataProvider
 
     this.logger.debug({
       message: "Found matching games.",
-      game: logGamevaultGame(game),
+      game: logPlaystashGame(game),
       gameResults: gameResults.map((gameResult) => ({
         probability: probabilityMap.get(gameResults.indexOf(gameResult)),
         title: gameResult.title,

@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   test:
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     runs-on: ubuntu-latest
 
     steps:

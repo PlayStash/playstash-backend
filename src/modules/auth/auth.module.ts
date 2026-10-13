@@ -6,7 +6,7 @@ import { type StringValue } from "ms";
 import configuration from "../../configuration.js";
 import { UsersModule } from "../users/users.module.js";
 import { AuthenticationService } from "./authentication.service.js";
-import { GamevaultJwtController } from "./controllers/authentication.controller.js";
+import { PlaystashJwtController } from "./controllers/authentication.controller.js";
 import { BasicAuthController } from "./controllers/basic-auth.controller.js";
 import { OAuth2Controller } from "./controllers/oauth2.controller.js";
 import { ApiKeyGuard } from "./guards/api-key.guard.js";
@@ -32,7 +32,7 @@ import { RefreshTokenStrategy } from "./strategies/refresh-token.strategy.js";
   ],
   controllers: [
     BasicAuthController,
-    GamevaultJwtController,
+    PlaystashJwtController,
     ...(configuration.AUTH.BASIC_AUTH.ENABLED ? [BasicAuthController] : []),
     ...(configuration.AUTH.OAUTH2.ENABLED ? [OAuth2Controller] : []),
   ],

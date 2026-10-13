@@ -14,6 +14,7 @@ import {
   ApiBody,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiSecurity,
   ApiTags,
 } from "@nestjs/swagger";
@@ -23,10 +24,10 @@ import { DisableApiIf } from "../../decorators/disable-api-if.decorator.js";
 import { MinimumRole } from "../../decorators/minimum-role.decorator.js";
 import { type GameIdDto } from "../games/models/game-id.dto.js";
 import { ApiKeyService } from "./api-key.service.js";
-import { GamevaultUser } from "./gamevault-user.entity.js";
 import { Role } from "./models/role.enum.js";
 import { UpdateUserDto } from "./models/update-user.dto.js";
 import { type UserIdDto } from "./models/user-id.dto.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { UsersService } from "./users.service.js";
 
 @ApiBearerAuth()
@@ -46,11 +47,11 @@ export class UsersController {
       "get an overview of all users. admins can see hidden users using this endpoint aswell.",
     operationId: "getUsers",
   })
-  @ApiOkResponse({ type: () => GamevaultUser, isArray: true })
+  @ApiOkResponse({ type: () => PlaystashUser, isArray: true })
   @MinimumRole(Role.GUEST)
   async getUsers(
-    @Request() req: { user: GamevaultUser },
-  ): Promise<GamevaultUser[]> {
+    @Request() req: { user: PlaystashUser },
+  ): Promise<PlaystashUser[]> {
     const includeHiddenUsers = req.user.role >= Role.ADMIN;
     return this.usersService.find(includeHiddenUsers);
   }
@@ -64,10 +65,10 @@ export class UsersController {
     operationId: "getUsersMe",
   })
   @MinimumRole(Role.GUEST)
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   async getUsersMe(
-    @Request() request: { user: GamevaultUser },
-  ): Promise<GamevaultUser> {
+    @Request() request: { user: PlaystashUser },
+  ): Promise<PlaystashUser> {
     return this.getUserByUserId({ user_id: request.user.id }, request);
   }
 
@@ -79,12 +80,12 @@ export class UsersController {
     operationId: "putUsersMe",
   })
   @MinimumRole(Role.USER)
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   async putUsersMe(
     @Body() dto: UpdateUserDto,
-    @Request() request: { user: GamevaultUser },
-  ): Promise<GamevaultUser> {
+    @Request() request: { user: PlaystashUser },
+  ): Promise<PlaystashUser> {
     return this.putUserByUserId(
       { user_id: request.user.id },
       dto,
@@ -99,26 +100,27 @@ export class UsersController {
     summary: "delete your own user",
     operationId: "deleteUserMe",
   })
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   @MinimumRole(Role.USER)
   @DisableApiIf(configuration.SERVER.DEMO_MODE_ENABLED)
   async deleteUsersMe(
-    @Request() request: { user: GamevaultUser },
-  ): Promise<GamevaultUser> {
+    @Request() request: { user: PlaystashUser },
+  ): Promise<PlaystashUser> {
     return this.usersService.delete(request.user.id);
   }
   //#endregion
 
   @Post("me/bookmark/:game_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "bookmark a game",
     operationId: "postUsersMeBookmark",
   })
   @MinimumRole(Role.GUEST)
   async postUsersMeBookmark(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Param() params: GameIdDto,
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     const user = await this.usersService.findOneByUsernameOrFail(
       request.user.username,
       { loadDeletedEntities: false, loadRelations: ["bookmarked_games"] },
@@ -127,15 +129,16 @@ export class UsersController {
   }
 
   @Delete("me/bookmark/:game_id")
+  @ApiParam({ name: "game_id", required: true, type: Number })
   @ApiOperation({
     summary: "unbookmark a game",
     operationId: "deleteUsersMeBookmark",
   })
   @MinimumRole(Role.GUEST)
   async deleteUsersMeBookmark(
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     @Param() params: GameIdDto,
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     const user = await this.usersService.findOneByUsernameOrFail(
       request.user.username,
       { loadDeletedEntities: false, loadRelations: ["bookmarked_games"] },
@@ -145,16 +148,17 @@ export class UsersController {
 
   /** Get details on a user. */
   @Get(":user_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
   @ApiOperation({
     summary: "get details on a user",
     operationId: "getUserByUserId",
   })
   @MinimumRole(Role.GUEST)
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   async getUserByUserId(
     @Param() params: UserIdDto,
-    @Request() request: { user: GamevaultUser },
-  ): Promise<GamevaultUser> {
+    @Request() request: { user: PlaystashUser },
+  ): Promise<PlaystashUser> {
     const user = await this.usersService.findOneByUserIdOrFail(
       Number(params.user_id),
     );
@@ -167,19 +171,20 @@ export class UsersController {
 
   /** Updates details of any user. */
   @Put(":user_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
   @ApiBody({ type: () => UpdateUserDto })
   @ApiOperation({
     summary: "update details of any user",
     operationId: "putUserByUserId",
   })
   @MinimumRole(Role.ADMIN)
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   async putUserByUserId(
     @Param() params: UserIdDto,
     @Body() dto: UpdateUserDto,
-    @Request() request: { user: GamevaultUser },
+    @Request() request: { user: PlaystashUser },
     isAdmin = true,
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     const user = await this.usersService.update(
       Number(params.user_id),
       dto,
@@ -194,27 +199,29 @@ export class UsersController {
 
   /** Deletes any user with the specified ID. */
   @Delete(":user_id")
+  @ApiParam({ name: "user_id", required: true, type: Number })
   @ApiOperation({
     summary: "delete any user",
     operationId: "deleteUserByUserId",
   })
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   @MinimumRole(Role.ADMIN)
-  async deleteUserByUserId(@Param() params: UserIdDto): Promise<GamevaultUser> {
+  async deleteUserByUserId(@Param() params: UserIdDto): Promise<PlaystashUser> {
     return this.usersService.delete(Number(params.user_id));
   }
 
   /** Recover a deleted user. */
   @Post(":user_id/recover")
+  @ApiParam({ name: "user_id", required: true, type: Number })
   @MinimumRole(Role.ADMIN)
   @ApiOperation({
     summary: "recover a deleted user",
     operationId: "postUserRecoverByUserId",
   })
-  @ApiOkResponse({ type: () => GamevaultUser })
+  @ApiOkResponse({ type: () => PlaystashUser })
   async postUserRecoverByUserId(
     @Param() params: UserIdDto,
-  ): Promise<GamevaultUser> {
+  ): Promise<PlaystashUser> {
     return this.usersService.recover(Number(params.user_id));
   }
 }

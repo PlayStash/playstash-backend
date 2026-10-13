@@ -13,7 +13,7 @@ vi.mock("../../configuration.js", () => ({
       PORT: 5432,
       USERNAME: "user",
       PASSWORD: "correct-password",
-      DATABASE: "gamevault",
+      DATABASE: "playstash",
     },
     SERVER: { VERSION: "13.0.0" },
     VOLUMES: { SQLITEDB: "/data/sqlite" },
@@ -28,8 +28,8 @@ vi.mock("../../logging.js", () => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
-  logGamevaultGame: vi.fn(),
-  logGamevaultUser: vi.fn(),
+  logPlaystashGame: vi.fn(),
+  logPlaystashUser: vi.fn(),
   logMedia: vi.fn(),
   logMetadata: vi.fn(),
   logMetadataProvider: vi.fn(),
@@ -76,7 +76,7 @@ describe("DatabaseService", () => {
     it("should generate a path with version and timestamp", () => {
       const filepath = (service as any).generateBackupFilepath();
       expect(filepath).toMatch(
-        /^\/tmp\/gamevault_13\.0\.0_database_backup_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/,
+        /^\/tmp\/playstash_13\.0\.0_database_backup_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/,
       );
       expect(filepath).toMatch(/\.db$/);
     });
@@ -85,8 +85,8 @@ describe("DatabaseService", () => {
       const first = (service as any).generateBackupFilepath();
       const second = (service as any).generateBackupFilepath();
       // May or may not differ depending on timing, but both should be valid
-      expect(first).toMatch(/^\/tmp\/gamevault_/);
-      expect(second).toMatch(/^\/tmp\/gamevault_/);
+      expect(first).toMatch(/^\/tmp\/playstash_/);
+      expect(second).toMatch(/^\/tmp\/playstash_/);
     });
   });
 

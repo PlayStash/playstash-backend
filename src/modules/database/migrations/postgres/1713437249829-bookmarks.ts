@@ -6,20 +6,20 @@ export class Bookmarks1713437249829 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
             CREATE TABLE "bookmark" (
-                "gamevault_user_id" integer NOT NULL,
+                "playstash_user_id" integer NOT NULL,
                 "game_id" integer NOT NULL,
-                CONSTRAINT "PK_325b35ab3e3c642acdc990b96bf" PRIMARY KEY ("gamevault_user_id", "game_id")
+                CONSTRAINT "PK_325b35ab3e3c642acdc990b96bf" PRIMARY KEY ("playstash_user_id", "game_id")
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_90b8e2ed41d03127a4a9dbd839" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_90b8e2ed41d03127a4a9dbd839" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_8990e34bae4dca1bed3c9ab14d" ON "bookmark" ("game_id")
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"
-            ADD CONSTRAINT "FK_90b8e2ed41d03127a4a9dbd8392" FOREIGN KEY ("gamevault_user_id") REFERENCES "gamevault_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
+            ADD CONSTRAINT "FK_90b8e2ed41d03127a4a9dbd8392" FOREIGN KEY ("playstash_user_id") REFERENCES "playstash_user"("id") ON DELETE CASCADE ON UPDATE CASCADE
         `);
     await queryRunner.query(`
             ALTER TABLE "bookmark"

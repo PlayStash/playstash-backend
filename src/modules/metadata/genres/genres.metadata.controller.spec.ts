@@ -2,7 +2,7 @@ import { type PaginateQuery, PaginationType, paginate } from "nestjs-paginate";
 import { Repository } from "typeorm";
 
 import type { Mock, Mocked } from "vitest";
-import { GamevaultGame } from "../../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../../games/playstash-game.entity.js";
 import { GenreMetadata } from "./genre.metadata.entity.js";
 import { GenreController } from "./genres.metadata.controller.js";
 
@@ -53,7 +53,7 @@ describe("GenreController", () => {
     );
     expect(queryBuilder.innerJoin).toHaveBeenNthCalledWith(
       2,
-      GamevaultGame,
+      PlaystashGame,
       "game",
       "game.metadata_id = games.id AND game.deleted_at IS NULL",
     );

@@ -2,13 +2,13 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 
-import { GamevaultUser } from "./gamevault-user.entity.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 
 @Injectable()
 export class ApiKeyService {
   constructor(
-    @InjectRepository(GamevaultUser)
-    private readonly userRepository: Repository<GamevaultUser>,
+    @InjectRepository(PlaystashUser)
+    private readonly userRepository: Repository<PlaystashUser>,
   ) {}
 
   async findUserByApiKeyOrFail(api_key: string) {

@@ -19,8 +19,8 @@ vi.mock("../../../logging.js", () => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
-  logGamevaultGame: vi.fn(),
-  logGamevaultUser: vi.fn(),
+  logPlaystashGame: vi.fn(),
+  logPlaystashUser: vi.fn(),
   logMedia: vi.fn(),
   logMetadata: vi.fn(),
   logMetadataProvider: vi.fn(),
@@ -86,7 +86,7 @@ describe("GameMetadataService", () => {
       await service.findByProviderSlug();
       expect(repo.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { provider_slug: "gamevault" },
+          where: { provider_slug: "playstash" },
           relations: undefined,
           withDeleted: false,
         }),

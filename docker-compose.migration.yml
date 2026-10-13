@@ -4,9 +4,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: gamevault
-      POSTGRES_PASSWORD: gamevault
-      POSTGRES_DB: gamevault
+      POSTGRES_USER: playstash
+      POSTGRES_PASSWORD: playstash
+      POSTGRES_DB: playstash
     ports:
       - "5432:5432"
     healthcheck:
@@ -16,7 +16,7 @@ services:
     container_name: pgweb
     image: sosedoff/pgweb:latest
     environment:
-      PGWEB_DATABASE_URL: postgres://gamevault:gamevault@db:5432/gamevault?sslmode=disable
+      PGWEB_DATABASE_URL: postgres://playstash:playstash@db:5432/playstash?sslmode=disable
     ports:
       - 8081:8081
     depends_on: 

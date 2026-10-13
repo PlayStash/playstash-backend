@@ -1,5 +1,5 @@
 {
-  "name": "gamevault-backend",
+  "name": "playstash-backend",
   "version": "17.0.1",
   "description": "the self-hosted gaming platform for drm-free games",
   "author": "Alkan Alper, Schäfer Philip GbR / Phalcode",
@@ -16,6 +16,8 @@
     "start:prod": "node dist/src/main.js",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit",
+    "export:openapi": "pnpm run build && node scripts/export-openapi.mjs",
+    "check:fresh-schema": "pnpm run build && node scripts/check-fresh-schema.mjs",
     "migration:gen:sqlite": "pnpm run build && typeorm -d dist/src/modules/database/migrations/sqlite.migration-config.js migration:generate -p",
     "migration:run:sqlite": "pnpm run build && typeorm -d dist/src/modules/database/migrations/sqlite.migration-config.js migration:run",
     "migration:revert:sqlite": "pnpm run build && typeorm -d dist/src/modules/database/migrations/sqlite.migration-config.js migration:revert",

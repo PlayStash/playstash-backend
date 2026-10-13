@@ -14,7 +14,7 @@ export class GenreMetadataService {
   ) {}
 
   async findByProviderSlug(
-    provider_slug: string = "gamevault",
+    provider_slug: string = "playstash",
     options: FindOptions = { loadDeletedEntities: false, loadRelations: false },
   ): Promise<GenreMetadata[]> {
     let relationPaths: string[] = [];

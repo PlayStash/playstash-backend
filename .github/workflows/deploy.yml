@@ -14,9 +14,11 @@ concurrency:
 
 jobs:
   test:
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     uses: ./.github/workflows/test.yml
 
   docker:
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     needs: test
     runs-on: ubuntu-latest
     strategy:
@@ -47,14 +49,14 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: phalcode
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: phalcode
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push by digest
@@ -63,8 +65,8 @@ jobs:
         with:
           platforms: ${{ matrix.platform }}
           tags: |
-            phalcode/gamevault-backend
-            ghcr.io/phalcode/gamevault-backend
+            playstash/playstash-backend
+            ghcr.io/playstash/playstash-backend
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -84,6 +86,7 @@ jobs:
           retention-days: 1
 
   manifest:
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' }}
     needs: docker
     runs-on: ubuntu-latest
     steps:
@@ -100,14 +103,14 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: phalcode
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: phalcode
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
@@ -129,16 +132,16 @@ jobs:
 
           case "$BRANCH" in
             master|hotfix)
-              push_manifest "phalcode/gamevault-backend" "latest $VERSION"
-              push_manifest "ghcr.io/phalcode/gamevault-backend" "latest $VERSION"
+              push_manifest "playstash/playstash-backend" "latest $VERSION"
+              push_manifest "ghcr.io/playstash/playstash-backend" "latest $VERSION"
               ;;
             develop)
-              push_manifest "phalcode/gamevault-backend" "unstable"
-              push_manifest "ghcr.io/phalcode/gamevault-backend" "unstable"
+              push_manifest "playstash/playstash-backend" "unstable"
+              push_manifest "ghcr.io/playstash/playstash-backend" "unstable"
               ;;
             early-access)
-              push_manifest "phalcode/gamevault-backend" "early-access"
-              push_manifest "ghcr.io/phalcode/gamevault-backend" "early-access"
+              push_manifest "playstash/playstash-backend" "early-access"
+              push_manifest "ghcr.io/playstash/playstash-backend" "early-access"
               ;;
           esac
 
@@ -155,11 +158,11 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_BOT_WEBHOOK }}
         with:
-          args: "<@&1128857090090340382> New Release: {{ EVENT_PAYLOAD.repository.full_name }} v${{ needs.docker.outputs.version }} has been deployed. Here are the changes: https://github.com/{{ EVENT_PAYLOAD.repository.full_name }}/releases/tag/${{ needs.docker.outputs.version }}"
+          args: "New Release: {{ EVENT_PAYLOAD.repository.full_name }} v${{ needs.docker.outputs.version }} has been deployed. Here are the changes: https://github.com/{{ EVENT_PAYLOAD.repository.full_name }}/releases/tag/${{ needs.docker.outputs.version }}"
 
   sonarcloud:
     needs: test
-    if: github.ref == 'refs/heads/develop'
+    if: ${{ vars.PLAYSTASH_RUN_WORKFLOWS == 'true' && (github.ref == 'refs/heads/develop') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

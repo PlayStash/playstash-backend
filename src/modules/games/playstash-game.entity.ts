@@ -15,13 +15,13 @@ import {
 import { DatabaseEntity } from "../database/database.entity.js";
 import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
 import { Progress } from "../progresses/progress.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { GameVersion } from "./game-version.entity.js";
 import { GameType } from "./models/game-type.enum.js";
 import { sortGameVersions } from "./version-selection.util.js";
 
 @Entity()
-export class GamevaultGame extends DatabaseEntity {
+export class PlaystashGame extends DatabaseEntity {
   @Index({ unique: true })
   @Column({ unique: true })
   @ApiPropertyOptional({
@@ -129,9 +129,9 @@ export class GamevaultGame extends DatabaseEntity {
   type!: GameType;
 
   @JoinTable({
-    name: "gamevault_game_provider_metadata_game_metadata",
+    name: "playstash_game_provider_metadata_game_metadata",
     joinColumn: {
-      name: "gamevault_game_id",
+      name: "playstash_game_id",
       referencedColumnName: "id",
     },
     inverseJoinColumn: {
@@ -182,13 +182,13 @@ export class GamevaultGame extends DatabaseEntity {
   })
   progresses?: Relation<Progress[]>;
 
-  @ManyToMany(() => GamevaultUser, (user) => user.bookmarked_games)
+  @ManyToMany(() => PlaystashUser, (user) => user.bookmarked_games)
   @ApiPropertyOptional({
     description: "users that bookmarked this game",
-    type: () => GamevaultUser,
+    type: () => PlaystashUser,
     isArray: true,
   })
-  bookmarked_users?: Relation<GamevaultUser[]>;
+  bookmarked_users?: Relation<PlaystashUser[]>;
 
   private createSortTitle(title: string): string {
     // List of leading articles to be removed

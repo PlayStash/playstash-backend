@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The following Docker Tags are supported by Phalcode and get regular security updates.
+The following Docker Tags are supported by PlayStash and get regular security updates.
 
 | Version | Regular Updates | Supported          |
 | ------- | ---|------------------ |
@@ -12,4 +12,4 @@ The following Docker Tags are supported by Phalcode and get regular security upd
 
 ## Reporting a Vulnerability
 
-Please report any vulnerabilities to Phalcode [via Email](mailto:contact@phalco.de).
+Please report vulnerabilities through the [PlayStash backend security page](https://github.com/PlayStash/playstash-backend/security).

@@ -8,21 +8,21 @@ import { GameMetadataService } from "../metadata/games/game.metadata.service.js"
 import { MetadataService } from "../metadata/metadata.service.js";
 import { GameVersion } from "./game-version.entity.js";
 import { GamesService } from "./games.service.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { GameType } from "./models/game-type.enum.js";
 
 describe("GamesService", () => {
   let service: GamesService;
-  let gamesRepository: Mocked<Repository<GamevaultGame>>;
+  let gamesRepository: Mocked<Repository<PlaystashGame>>;
   let gameVersionRepository: Mocked<Repository<GameVersion>>;
   let metadataService: Mocked<MetadataService>;
   let gameMetadataService: Mocked<GameMetadataService>;
 
   const createMockGame = (
-    overrides: Partial<GamevaultGame> = {},
-  ): GamevaultGame => {
-    const game = new GamevaultGame();
+    overrides: Partial<PlaystashGame> = {},
+  ): PlaystashGame => {
+    const game = new PlaystashGame();
     game.id = 1;
     game.title = "Test Game";
     game.file_path = "/files/Test Game (2023).zip";

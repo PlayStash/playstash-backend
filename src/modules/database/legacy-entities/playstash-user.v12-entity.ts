@@ -15,8 +15,8 @@ import { DatabaseEntityV12 } from "./database.v12-entity.js";
 import { GameV12 } from "./game.v12-entity.js";
 import { ImageV12 } from "./image.v12-entity.js";
 import { ProgressV12 } from "./progress.v12-entity.js";
-@Entity("v12_gamevault_user", { synchronize: false })
-export class GamevaultUserV12 extends DatabaseEntityV12 {
+@Entity("v12_playstash_user", { synchronize: false })
+export class PlaystashUserV12 extends DatabaseEntityV12 {
   @Index()
   @Column({ unique: true })
   @ApiProperty({ example: "JohnDoe", description: "username of the user" })

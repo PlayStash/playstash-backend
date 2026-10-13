@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import fsExtra from "fs-extra";
 import lodash from "lodash";
 import { In, MigrationInterface, type QueryRunner } from "typeorm";
-import { GamevaultGame } from "../../../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../../../games/playstash-game.entity.js";
 import { Media } from "../../../media/media.entity.js";
 import { DeveloperMetadata } from "../../../metadata/developers/developer.metadata.entity.js";
 import { GameMetadata } from "../../../metadata/games/game.metadata.entity.js";
@@ -12,12 +12,12 @@ import { PublisherMetadata } from "../../../metadata/publishers/publisher.metada
 import { TagMetadata } from "../../../metadata/tags/tag.metadata.entity.js";
 import { State } from "../../../progresses/models/state.enum.js";
 import { Progress } from "../../../progresses/progress.entity.js";
-import { GamevaultUser } from "../../../users/gamevault-user.entity.js";
+import { PlaystashUser } from "../../../users/playstash-user.entity.js";
 import { DeveloperV12 } from "../../legacy-entities/developer.v12-entity.js";
 import { GameV12 } from "../../legacy-entities/game.v12-entity.js";
-import { GamevaultUserV12 } from "../../legacy-entities/gamevault-user.v12-entity.js";
 import { GenreV12 } from "../../legacy-entities/genre.v12-entity.js";
 import { ImageV12 } from "../../legacy-entities/image.v12-entity.js";
+import { PlaystashUserV12 } from "../../legacy-entities/playstash-user.v12-entity.js";
 import { ProgressV12 } from "../../legacy-entities/progress.v12-entity.js";
 import { PublisherV12 } from "../../legacy-entities/publisher.v12-entity.js";
 import { TagV12 } from "../../legacy-entities/tag.v12-entity.js";
@@ -42,7 +42,7 @@ export class V13Final1728421385000 implements MigrationInterface {
         - Be sure to back up your data thoroughly before migrating, and contact us if you encounter any migration errors.
         - The migration process may take up to 30 minutes or even longer for larger servers. During this time, clients will not be able to use the server.
         - The container might appear as UNHEALTHY during the migration. This is expected behavior, and no action is needed. Let it complete the process.
-        - Make sure to disable any Docker auto-heal features for GameVault, as they might terminate the container during the migration.
+        - Make sure to disable any Docker auto-heal features for PlayStash, as they might terminate the container during the migration.
         - Restarting the server will restart the migration.
         - Even when the server is running after the migration, it will take a while until you see all your game data. Be patient and check the logs for inactivity.`,
     );
@@ -59,6 +59,19 @@ export class V13Final1728421385000 implements MigrationInterface {
       `Step ${currentStep}/${totalSteps}: Renaming tables - Running...`,
     );
     await this.part1_rename_tables(queryRunner);
+    // Renamed historical columns no longer match the original index-name hashes.
+    // Remove archived secondary indexes before creating the current schema, so
+    // SQLite's database-wide index names cannot collide with the new tables.
+    const archivedIndexes: { name: string }[] = await queryRunner.query(
+      `SELECT name FROM sqlite_master WHERE type = 'index'
+       AND substr(tbl_name, 1, 4) = 'v12_'
+       AND name NOT LIKE 'sqlite_autoindex_%'`,
+    );
+    for (const index of archivedIndexes) {
+      await queryRunner.query(
+        `DROP INDEX IF EXISTS "${index.name.replaceAll('"', '""')}"`,
+      );
+    }
     this.logger.log(
       `Step ${currentStep}/${totalSteps}: Renaming tables - Completed`,
     );
@@ -129,13 +142,13 @@ export class V13Final1728421385000 implements MigrationInterface {
 
   private async part0_sync(queryRunner: QueryRunner) {
     await queryRunner.query(`
-            DROP INDEX "IDX_5c0cd47a75116720223e43db85"
+            DROP INDEX IF EXISTS "IDX_5c0cd47a75116720223e43db85"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_5c2989f7bc37f907cfd937c0fd"
+            DROP INDEX IF EXISTS "IDX_5c2989f7bc37f907cfd937c0fd"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_71b846918f80786eed6bfb68b7"
+            DROP INDEX IF EXISTS "IDX_71b846918f80786eed6bfb68b7"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_developer" (
@@ -186,13 +199,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_71b846918f80786eed6bfb68b7" ON "developer" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_672bce67ec8cb2d7755c158ad6"
+            DROP INDEX IF EXISTS "IDX_672bce67ec8cb2d7755c158ad6"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_dd8cd9e50dd049656e4be1f7e8"
+            DROP INDEX IF EXISTS "IDX_dd8cd9e50dd049656e4be1f7e8"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0285d4f1655d080cfcf7d1ab14"
+            DROP INDEX IF EXISTS "IDX_0285d4f1655d080cfcf7d1ab14"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_genre" (
@@ -243,13 +256,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_0285d4f1655d080cfcf7d1ab14" ON "genre" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a0539222ee1307f657f875003"
+            DROP INDEX IF EXISTS "IDX_4a0539222ee1307f657f875003"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_9dc496f2e5b912da9edd2aa445"
+            DROP INDEX IF EXISTS "IDX_9dc496f2e5b912da9edd2aa445"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_70a5936b43177f76161724da3e"
+            DROP INDEX IF EXISTS "IDX_70a5936b43177f76161724da3e"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_publisher" (
@@ -300,13 +313,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_70a5936b43177f76161724da3e" ON "publisher" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_45c4541783f264043ec2a5864d"
+            DROP INDEX IF EXISTS "IDX_45c4541783f264043ec2a5864d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_66df34da7fb037e24fc7fee642"
+            DROP INDEX IF EXISTS "IDX_66df34da7fb037e24fc7fee642"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f3172007d4de5ae8e7692759d7"
+            DROP INDEX IF EXISTS "IDX_f3172007d4de5ae8e7692759d7"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_store" (
@@ -357,13 +370,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f3172007d4de5ae8e7692759d7" ON "store" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_289102542903593026bd16e4e1"
+            DROP INDEX IF EXISTS "IDX_289102542903593026bd16e4e1"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6a9775008add570dc3e5a0bab7"
+            DROP INDEX IF EXISTS "IDX_6a9775008add570dc3e5a0bab7"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8e4052373c579afc1471f52676"
+            DROP INDEX IF EXISTS "IDX_8e4052373c579afc1471f52676"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_tag" (
@@ -414,13 +427,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_8e4052373c579afc1471f52676" ON "tag" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_5c0cd47a75116720223e43db85"
+            DROP INDEX IF EXISTS "IDX_5c0cd47a75116720223e43db85"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_5c2989f7bc37f907cfd937c0fd"
+            DROP INDEX IF EXISTS "IDX_5c2989f7bc37f907cfd937c0fd"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_71b846918f80786eed6bfb68b7"
+            DROP INDEX IF EXISTS "IDX_71b846918f80786eed6bfb68b7"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_developer" (
@@ -471,13 +484,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_71b846918f80786eed6bfb68b7" ON "developer" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_672bce67ec8cb2d7755c158ad6"
+            DROP INDEX IF EXISTS "IDX_672bce67ec8cb2d7755c158ad6"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_dd8cd9e50dd049656e4be1f7e8"
+            DROP INDEX IF EXISTS "IDX_dd8cd9e50dd049656e4be1f7e8"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0285d4f1655d080cfcf7d1ab14"
+            DROP INDEX IF EXISTS "IDX_0285d4f1655d080cfcf7d1ab14"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_genre" (
@@ -528,13 +541,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_0285d4f1655d080cfcf7d1ab14" ON "genre" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a0539222ee1307f657f875003"
+            DROP INDEX IF EXISTS "IDX_4a0539222ee1307f657f875003"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_9dc496f2e5b912da9edd2aa445"
+            DROP INDEX IF EXISTS "IDX_9dc496f2e5b912da9edd2aa445"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_70a5936b43177f76161724da3e"
+            DROP INDEX IF EXISTS "IDX_70a5936b43177f76161724da3e"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_publisher" (
@@ -585,13 +598,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_70a5936b43177f76161724da3e" ON "publisher" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_45c4541783f264043ec2a5864d"
+            DROP INDEX IF EXISTS "IDX_45c4541783f264043ec2a5864d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_66df34da7fb037e24fc7fee642"
+            DROP INDEX IF EXISTS "IDX_66df34da7fb037e24fc7fee642"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f3172007d4de5ae8e7692759d7"
+            DROP INDEX IF EXISTS "IDX_f3172007d4de5ae8e7692759d7"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_store" (
@@ -642,13 +655,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f3172007d4de5ae8e7692759d7" ON "store" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_289102542903593026bd16e4e1"
+            DROP INDEX IF EXISTS "IDX_289102542903593026bd16e4e1"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6a9775008add570dc3e5a0bab7"
+            DROP INDEX IF EXISTS "IDX_6a9775008add570dc3e5a0bab7"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8e4052373c579afc1471f52676"
+            DROP INDEX IF EXISTS "IDX_8e4052373c579afc1471f52676"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_tag" (
@@ -709,9 +722,9 @@ export class V13Final1728421385000 implements MigrationInterface {
 
     // Rename all existing tables, so no conflicts appear
     await queryRunner.query(`ALTER TABLE "image" RENAME TO "v12_image"`);
-    await queryRunner.query(`DROP INDEX "IDX_f03b89f33671086e6733828e79"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_f03b89f33671086e6733828e79"`);
     await queryRunner.renameTable("game", "v12_game");
-    await queryRunner.renameTable("gamevault_user", "v12_gamevault_user");
+    await queryRunner.renameTable("playstash_user", "v12_playstash_user");
 
     await queryRunner.renameTable("progress", "v12_progress");
     await queryRunner.renameTable("developer", "v12_developer");
@@ -723,8 +736,8 @@ export class V13Final1728421385000 implements MigrationInterface {
     await queryRunner.renameTable("bookmark", "v12_bookmark");
     await queryRunner.renameColumn(
       "v12_bookmark",
-      "gamevault_user_id",
-      "v12_gamevault_user_id",
+      "playstash_user_id",
+      "v12_playstash_user_id",
     );
     await queryRunner.renameColumn("v12_bookmark", "game_id", "v12_game_id");
 
@@ -804,7 +817,7 @@ export class V13Final1728421385000 implements MigrationInterface {
   }
   private async part2_generate_new_schema(queryRunner: QueryRunner) {
     await queryRunner.query(`
-            DROP INDEX "IDX_d6db1ab4ee9ad9dbe86c64e4cc"
+            DROP INDEX IF EXISTS "IDX_d6db1ab4ee9ad9dbe86c64e4cc"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_image" (
@@ -854,7 +867,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_d6db1ab4ee9ad9dbe86c64e4cc" ON "v12_image" ("id")
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_v12_gamevault_user" (
+            CREATE TABLE "temporary_v12_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -874,7 +887,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_v12_gamevault_user"(
+            INSERT INTO "temporary_v12_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -904,17 +917,17 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "v12_gamevault_user"
+            FROM "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "v12_gamevault_user"
+            DROP TABLE "v12_playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_v12_gamevault_user"
-                RENAME TO "v12_gamevault_user"
+            ALTER TABLE "temporary_v12_playstash_user"
+                RENAME TO "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8d759a72ce42e6444af6860181"
+            DROP INDEX IF EXISTS "IDX_8d759a72ce42e6444af6860181"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_game" (
@@ -1009,16 +1022,16 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_8d759a72ce42e6444af6860181" ON "v12_game" ("title")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_d6db1ab4ee9ad9dbe86c64e4cc"
+            DROP INDEX IF EXISTS "IDX_d6db1ab4ee9ad9dbe86c64e4cc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_039ad5528f914321b2fc6b1fff"
+            DROP INDEX IF EXISTS "IDX_039ad5528f914321b2fc6b1fff"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_54a35803b834868362fa4c2629"
+            DROP INDEX IF EXISTS "IDX_54a35803b834868362fa4c2629"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_907a95c00ab6d81140c1a1b4a3"
+            DROP INDEX IF EXISTS "IDX_907a95c00ab6d81140c1a1b4a3"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_developer" (
@@ -1069,13 +1082,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_907a95c00ab6d81140c1a1b4a3" ON "v12_developer" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_888c3736e64117aba956e90f65"
+            DROP INDEX IF EXISTS "IDX_888c3736e64117aba956e90f65"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8a0e8d0364e3637f00d655af94"
+            DROP INDEX IF EXISTS "IDX_8a0e8d0364e3637f00d655af94"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_cf2ba84ceb90f80049fce15995"
+            DROP INDEX IF EXISTS "IDX_cf2ba84ceb90f80049fce15995"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_genre" (
@@ -1126,13 +1139,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_cf2ba84ceb90f80049fce15995" ON "v12_genre" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ba10ea475597187820c3b4fd28"
+            DROP INDEX IF EXISTS "IDX_ba10ea475597187820c3b4fd28"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2263bfd2f8ed59b0f54f6d3ae9"
+            DROP INDEX IF EXISTS "IDX_2263bfd2f8ed59b0f54f6d3ae9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f2f05b756501810d84eea1d651"
+            DROP INDEX IF EXISTS "IDX_f2f05b756501810d84eea1d651"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_publisher" (
@@ -1183,13 +1196,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f2f05b756501810d84eea1d651" ON "v12_publisher" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a2e62473659b6263b17a5497c"
+            DROP INDEX IF EXISTS "IDX_4a2e62473659b6263b17a5497c"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6695d0cc38a598edd65fcba0ee"
+            DROP INDEX IF EXISTS "IDX_6695d0cc38a598edd65fcba0ee"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e2db9da8c8288f3ff795994d4d"
+            DROP INDEX IF EXISTS "IDX_e2db9da8c8288f3ff795994d4d"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_store" (
@@ -1240,13 +1253,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_e2db9da8c8288f3ff795994d4d" ON "v12_store" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_b60ff4525bb354df761a2eba44"
+            DROP INDEX IF EXISTS "IDX_b60ff4525bb354df761a2eba44"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_636a93cb92150e4660bf07a3bc"
+            DROP INDEX IF EXISTS "IDX_636a93cb92150e4660bf07a3bc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0e129f8ad40f587596e0f8d8ff"
+            DROP INDEX IF EXISTS "IDX_0e129f8ad40f587596e0f8d8ff"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_tag" (
@@ -1505,7 +1518,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_feaddf361921db1df3a6fe3965" ON "progress" ("game_id")
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_game" (
+            CREATE TABLE "playstash_game" (
                 "id" integer PRIMARY KEY NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -1535,16 +1548,16 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "gamevault_game" ("id")
+            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "playstash_game" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "gamevault_game" ("file_path")
+            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "playstash_game" ("file_path")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "gamevault_game" ("release_date")
+            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "playstash_game" ("release_date")
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_user" (
+            CREATE TABLE "playstash_user" (
                 "id" integer PRIMARY KEY NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -1569,29 +1582,29 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_4c835305e86b28e416cfe13dac" ON "gamevault_user" ("username")
+            CREATE UNIQUE INDEX "IDX_4c835305e86b28e416cfe13dac" ON "playstash_user" ("username")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "gamevault_user" ("socket_secret")
+            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "playstash_user" ("socket_secret")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "gamevault_user" ("birth_date")
+            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "playstash_user" ("birth_date")
         `);
     await queryRunner.query(`
-            CREATE TABLE "game_metadata_gamevault_games_gamevault_game" (
+            CREATE TABLE "game_metadata_playstash_games_playstash_game" (
                 "game_metadata_id" integer NOT NULL,
-                "gamevault_game_id" integer NOT NULL,
-                PRIMARY KEY ("game_metadata_id", "gamevault_game_id")
+                "playstash_game_id" integer NOT NULL,
+                PRIMARY KEY ("game_metadata_id", "playstash_game_id")
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_gamevault_games_gamevault_game" ("game_metadata_id")
+            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_playstash_games_playstash_game" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_gamevault_games_gamevault_game" ("gamevault_game_id")
+            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_playstash_games_playstash_game" ("playstash_game_id")
         `);
     await queryRunner.query(`
             CREATE TABLE "game_metadata_publishers_publisher_metadata" (
@@ -1646,33 +1659,33 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_0482ce35adf40c9128eaa1ae89" ON "game_metadata_genres_genre_metadata" ("genre_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE TABLE "gamevault_game_provider_metadata_game_metadata" (
-                "gamevault_game_id" integer NOT NULL,
+            CREATE TABLE "playstash_game_provider_metadata_game_metadata" (
+                "playstash_game_id" integer NOT NULL,
                 "game_metadata_id" integer NOT NULL,
-                PRIMARY KEY ("gamevault_game_id", "game_metadata_id")
+                PRIMARY KEY ("playstash_game_id", "game_metadata_id")
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "gamevault_game_provider_metadata_game_metadata" ("gamevault_game_id")
+            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "playstash_game_provider_metadata_game_metadata" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "gamevault_game_provider_metadata_game_metadata" ("game_metadata_id")
+            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "playstash_game_provider_metadata_game_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
             CREATE TABLE "bookmark" (
-                "gamevault_user_id" integer NOT NULL,
-                "gamevault_game_id" integer NOT NULL,
-                PRIMARY KEY ("gamevault_user_id", "gamevault_game_id")
+                "playstash_user_id" integer NOT NULL,
+                "playstash_game_id" integer NOT NULL,
+                PRIMARY KEY ("playstash_user_id", "playstash_game_id")
             )
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("gamevault_game_id")
+            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_v12_gamevault_user" (
+            CREATE TABLE "temporary_v12_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -1694,7 +1707,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_v12_gamevault_user"(
+            INSERT INTO "temporary_v12_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -1724,23 +1737,23 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "role",
                 "profile_picture_id",
                 "background_image_id"
-            FROM "v12_gamevault_user"
+            FROM "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "v12_gamevault_user"
+            DROP TABLE "v12_playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_v12_gamevault_user"
-                RENAME TO "v12_gamevault_user"
+            ALTER TABLE "temporary_v12_playstash_user"
+                RENAME TO "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_039ad5528f914321b2fc6b1fff"
+            DROP INDEX IF EXISTS "IDX_039ad5528f914321b2fc6b1fff"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_54a35803b834868362fa4c2629"
+            DROP INDEX IF EXISTS "IDX_54a35803b834868362fa4c2629"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_907a95c00ab6d81140c1a1b4a3"
+            DROP INDEX IF EXISTS "IDX_907a95c00ab6d81140c1a1b4a3"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_developer" (
@@ -1791,7 +1804,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_907a95c00ab6d81140c1a1b4a3" ON "v12_developer" ("id")
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_v12_gamevault_user" (
+            CREATE TABLE "temporary_v12_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -1815,7 +1828,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_v12_gamevault_user"(
+            INSERT INTO "temporary_v12_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -1847,23 +1860,23 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "profile_picture_id",
                 "background_image_id",
                 "socket_secret"
-            FROM "v12_gamevault_user"
+            FROM "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "v12_gamevault_user"
+            DROP TABLE "v12_playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_v12_gamevault_user"
-                RENAME TO "v12_gamevault_user"
+            ALTER TABLE "temporary_v12_playstash_user"
+                RENAME TO "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_888c3736e64117aba956e90f65"
+            DROP INDEX IF EXISTS "IDX_888c3736e64117aba956e90f65"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8a0e8d0364e3637f00d655af94"
+            DROP INDEX IF EXISTS "IDX_8a0e8d0364e3637f00d655af94"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_cf2ba84ceb90f80049fce15995"
+            DROP INDEX IF EXISTS "IDX_cf2ba84ceb90f80049fce15995"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_genre" (
@@ -1914,13 +1927,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_cf2ba84ceb90f80049fce15995" ON "v12_genre" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ba10ea475597187820c3b4fd28"
+            DROP INDEX IF EXISTS "IDX_ba10ea475597187820c3b4fd28"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2263bfd2f8ed59b0f54f6d3ae9"
+            DROP INDEX IF EXISTS "IDX_2263bfd2f8ed59b0f54f6d3ae9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f2f05b756501810d84eea1d651"
+            DROP INDEX IF EXISTS "IDX_f2f05b756501810d84eea1d651"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_publisher" (
@@ -1971,13 +1984,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f2f05b756501810d84eea1d651" ON "v12_publisher" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a2e62473659b6263b17a5497c"
+            DROP INDEX IF EXISTS "IDX_4a2e62473659b6263b17a5497c"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6695d0cc38a598edd65fcba0ee"
+            DROP INDEX IF EXISTS "IDX_6695d0cc38a598edd65fcba0ee"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e2db9da8c8288f3ff795994d4d"
+            DROP INDEX IF EXISTS "IDX_e2db9da8c8288f3ff795994d4d"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_store" (
@@ -2028,7 +2041,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_e2db9da8c8288f3ff795994d4d" ON "v12_store" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8d759a72ce42e6444af6860181"
+            DROP INDEX IF EXISTS "IDX_8d759a72ce42e6444af6860181"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_game" (
@@ -2126,13 +2139,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_8d759a72ce42e6444af6860181" ON "v12_game" ("title")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_b60ff4525bb354df761a2eba44"
+            DROP INDEX IF EXISTS "IDX_b60ff4525bb354df761a2eba44"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_636a93cb92150e4660bf07a3bc"
+            DROP INDEX IF EXISTS "IDX_636a93cb92150e4660bf07a3bc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0e129f8ad40f587596e0f8d8ff"
+            DROP INDEX IF EXISTS "IDX_0e129f8ad40f587596e0f8d8ff"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_tag" (
@@ -2189,10 +2202,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_fe74c6fdec37f411e4e042e1c7" ON "v12_image" ("path")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_59b393e6f4ed2f9a57e15835a9" ON "v12_gamevault_user" ("id")
+            CREATE INDEX "IDX_59b393e6f4ed2f9a57e15835a9" ON "v12_playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_d8fa7fb9bde6aa79885c4eed33" ON "v12_gamevault_user" ("username")
+            CREATE INDEX "IDX_d8fa7fb9bde6aa79885c4eed33" ON "v12_playstash_user" ("username")
         `);
     await queryRunner.query(`
             CREATE INDEX "IDX_d99731b484bc5fec1cfee9e0fc" ON "v12_game" ("id")
@@ -2204,10 +2217,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE UNIQUE INDEX "IDX_95628db340ba8b2c1ed6add021" ON "v12_game" ("file_path")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f4e0fcac36e050de337b670d8b"
+            DROP INDEX IF EXISTS "IDX_f4e0fcac36e050de337b670d8b"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_62649abcfe2e99bd6215511e23"
+            DROP INDEX IF EXISTS "IDX_62649abcfe2e99bd6215511e23"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_media" (
@@ -2221,7 +2234,7 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "type" varchar NOT NULL,
                 "uploader_id" integer,
                 CONSTRAINT "UQ_62649abcfe2e99bd6215511e231" UNIQUE ("file_path"),
-                CONSTRAINT "FK_8bd1ad5f79df58cfd7ad9c42fb5" FOREIGN KEY ("uploader_id") REFERENCES "gamevault_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+                CONSTRAINT "FK_8bd1ad5f79df58cfd7ad9c42fb5" FOREIGN KEY ("uploader_id") REFERENCES "playstash_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
             )
         `);
     await queryRunner.query(`
@@ -2261,22 +2274,22 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE UNIQUE INDEX "IDX_62649abcfe2e99bd6215511e23" ON "media" ("file_path")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_7af272a017b850a4ce7a6c2886"
+            DROP INDEX IF EXISTS "IDX_7af272a017b850a4ce7a6c2886"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e9a00e38e7969570d9ab66dd27"
+            DROP INDEX IF EXISTS "IDX_e9a00e38e7969570d9ab66dd27"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4f0b69ca308a906932c84ea0d5"
+            DROP INDEX IF EXISTS "IDX_4f0b69ca308a906932c84ea0d5"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_21c321551d9c772d56e07b2a1a"
+            DROP INDEX IF EXISTS "IDX_21c321551d9c772d56e07b2a1a"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_47070ef56d911fa9824f3277e2"
+            DROP INDEX IF EXISTS "IDX_47070ef56d911fa9824f3277e2"
         `);
     await queryRunner.query(`
-            DROP INDEX "UQ_GAME_METADATA"
+            DROP INDEX IF EXISTS "UQ_GAME_METADATA"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata" (
@@ -2393,13 +2406,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE UNIQUE INDEX "UQ_GAME_METADATA" ON "game_metadata" ("provider_slug", "provider_data_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_79abdfd87a688f9de756a162b6"
+            DROP INDEX IF EXISTS "IDX_79abdfd87a688f9de756a162b6"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ddcaca3a9db9d77105d51c02c2"
+            DROP INDEX IF EXISTS "IDX_ddcaca3a9db9d77105d51c02c2"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_feaddf361921db1df3a6fe3965"
+            DROP INDEX IF EXISTS "IDX_feaddf361921db1df3a6fe3965"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_progress" (
@@ -2422,8 +2435,8 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "last_played_at" datetime,
                 "user_id" integer,
                 "game_id" integer,
-                CONSTRAINT "FK_ddcaca3a9db9d77105d51c02c24" FOREIGN KEY ("user_id") REFERENCES "gamevault_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                CONSTRAINT "FK_feaddf361921db1df3a6fe3965a" FOREIGN KEY ("game_id") REFERENCES "gamevault_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+                CONSTRAINT "FK_ddcaca3a9db9d77105d51c02c24" FOREIGN KEY ("user_id") REFERENCES "playstash_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+                CONSTRAINT "FK_feaddf361921db1df3a6fe3965a" FOREIGN KEY ("game_id") REFERENCES "playstash_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
             )
         `);
     await queryRunner.query(`
@@ -2468,16 +2481,16 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_feaddf361921db1df3a6fe3965" ON "progress" ("game_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_dc16bc448f2591a832533f25d9"
+            DROP INDEX IF EXISTS "IDX_dc16bc448f2591a832533f25d9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_91d454956bd20f46b646b05b91"
+            DROP INDEX IF EXISTS "IDX_91d454956bd20f46b646b05b91"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_73e99cf1379987ed7c5983d74f"
+            DROP INDEX IF EXISTS "IDX_73e99cf1379987ed7c5983d74f"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_game" (
+            CREATE TABLE "temporary_playstash_game" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -2511,7 +2524,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_game"(
+            INSERT INTO "temporary_playstash_game"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -2543,38 +2556,38 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "type",
                 "user_metadata_id",
                 "metadata_id"
-            FROM "gamevault_game"
+            FROM "playstash_game"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_game"
+            DROP TABLE "playstash_game"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_game"
-                RENAME TO "gamevault_game"
+            ALTER TABLE "temporary_playstash_game"
+                RENAME TO "playstash_game"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "gamevault_game" ("id")
+            CREATE INDEX "IDX_dc16bc448f2591a832533f25d9" ON "playstash_game" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "gamevault_game" ("file_path")
+            CREATE UNIQUE INDEX "IDX_91d454956bd20f46b646b05b91" ON "playstash_game" ("file_path")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "gamevault_game" ("release_date")
+            CREATE INDEX "IDX_73e99cf1379987ed7c5983d74f" ON "playstash_game" ("release_date")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_c2a3f8b06558be9508161af22e"
+            DROP INDEX IF EXISTS "IDX_c2a3f8b06558be9508161af22e"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4c835305e86b28e416cfe13dac"
+            DROP INDEX IF EXISTS "IDX_4c835305e86b28e416cfe13dac"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e0da4bbf1074bca2d980a81077"
+            DROP INDEX IF EXISTS "IDX_e0da4bbf1074bca2d980a81077"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4edfac51e323a4993aec668eb4"
+            DROP INDEX IF EXISTS "IDX_4edfac51e323a4993aec668eb4"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_user" (
+            CREATE TABLE "temporary_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -2601,7 +2614,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_user"(
+            INSERT INTO "temporary_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -2635,32 +2648,32 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "role",
                 "avatar_id",
                 "background_id"
-            FROM "gamevault_user"
+            FROM "playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_user"
+            DROP TABLE "playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_user"
-                RENAME TO "gamevault_user"
+            ALTER TABLE "temporary_playstash_user"
+                RENAME TO "playstash_user"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "gamevault_user" ("id")
+            CREATE INDEX "IDX_c2a3f8b06558be9508161af22e" ON "playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_4c835305e86b28e416cfe13dac" ON "gamevault_user" ("username")
+            CREATE UNIQUE INDEX "IDX_4c835305e86b28e416cfe13dac" ON "playstash_user" ("username")
         `);
     await queryRunner.query(`
-            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "gamevault_user" ("socket_secret")
+            CREATE UNIQUE INDEX "IDX_e0da4bbf1074bca2d980a81077" ON "playstash_user" ("socket_secret")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "gamevault_user" ("birth_date")
+            CREATE INDEX "IDX_4edfac51e323a4993aec668eb4" ON "playstash_user" ("birth_date")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_9104e2e6a962d5cc0b17c3705d"
+            DROP INDEX IF EXISTS "IDX_9104e2e6a962d5cc0b17c3705d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_fe74c6fdec37f411e4e042e1c7"
+            DROP INDEX IF EXISTS "IDX_fe74c6fdec37f411e4e042e1c7"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_image" (
@@ -2674,7 +2687,7 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "media_type" varchar,
                 "uploader_id" integer,
                 CONSTRAINT "UQ_f03b89f33671086e6733828e79c" UNIQUE ("path"),
-                CONSTRAINT "FK_2feca751bd268e1f80b094c7fff" FOREIGN KEY ("uploader_id") REFERENCES "v12_gamevault_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+                CONSTRAINT "FK_2feca751bd268e1f80b094c7fff" FOREIGN KEY ("uploader_id") REFERENCES "v12_playstash_user" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION
             )
         `);
     await queryRunner.query(`
@@ -2714,13 +2727,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_fe74c6fdec37f411e4e042e1c7" ON "v12_image" ("path")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_59b393e6f4ed2f9a57e15835a9"
+            DROP INDEX IF EXISTS "IDX_59b393e6f4ed2f9a57e15835a9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_d8fa7fb9bde6aa79885c4eed33"
+            DROP INDEX IF EXISTS "IDX_d8fa7fb9bde6aa79885c4eed33"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_v12_gamevault_user" (
+            CREATE TABLE "temporary_v12_playstash_user" (
                 "id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
                 "created_at" datetime NOT NULL DEFAULT (datetime('now')),
                 "updated_at" datetime NOT NULL DEFAULT (datetime('now')),
@@ -2746,7 +2759,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_v12_gamevault_user"(
+            INSERT INTO "temporary_v12_playstash_user"(
                     "id",
                     "created_at",
                     "updated_at",
@@ -2778,32 +2791,32 @@ export class V13Final1728421385000 implements MigrationInterface {
                 "profile_picture_id",
                 "background_image_id",
                 "socket_secret"
-            FROM "v12_gamevault_user"
+            FROM "v12_playstash_user"
         `);
     await queryRunner.query(`
-            DROP TABLE "v12_gamevault_user"
+            DROP TABLE "v12_playstash_user"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_v12_gamevault_user"
-                RENAME TO "v12_gamevault_user"
+            ALTER TABLE "temporary_v12_playstash_user"
+                RENAME TO "v12_playstash_user"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_59b393e6f4ed2f9a57e15835a9" ON "v12_gamevault_user" ("id")
+            CREATE INDEX "IDX_59b393e6f4ed2f9a57e15835a9" ON "v12_playstash_user" ("id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_d8fa7fb9bde6aa79885c4eed33" ON "v12_gamevault_user" ("username")
+            CREATE INDEX "IDX_d8fa7fb9bde6aa79885c4eed33" ON "v12_playstash_user" ("username")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8d759a72ce42e6444af6860181"
+            DROP INDEX IF EXISTS "IDX_8d759a72ce42e6444af6860181"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_d99731b484bc5fec1cfee9e0fc"
+            DROP INDEX IF EXISTS "IDX_d99731b484bc5fec1cfee9e0fc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_179bcdd73ab43366d14defc706"
+            DROP INDEX IF EXISTS "IDX_179bcdd73ab43366d14defc706"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_95628db340ba8b2c1ed6add021"
+            DROP INDEX IF EXISTS "IDX_95628db340ba8b2c1ed6add021"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_game" (
@@ -2912,44 +2925,44 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE UNIQUE INDEX "IDX_95628db340ba8b2c1ed6add021" ON "v12_game" ("file_path")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_178abeeb628ebcdb70239c08d4"
+            DROP INDEX IF EXISTS "IDX_178abeeb628ebcdb70239c08d4"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_c5afe975cb06f9624d5f5aa8ff"
+            DROP INDEX IF EXISTS "IDX_c5afe975cb06f9624d5f5aa8ff"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_game_metadata_gamevault_games_gamevault_game" (
+            CREATE TABLE "temporary_game_metadata_playstash_games_playstash_game" (
                 "game_metadata_id" integer NOT NULL,
-                "gamevault_game_id" integer NOT NULL,
+                "playstash_game_id" integer NOT NULL,
                 CONSTRAINT "FK_178abeeb628ebcdb70239c08d46" FOREIGN KEY ("game_metadata_id") REFERENCES "game_metadata" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-                CONSTRAINT "FK_c5afe975cb06f9624d5f5aa8ff7" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                PRIMARY KEY ("game_metadata_id", "gamevault_game_id")
+                CONSTRAINT "FK_c5afe975cb06f9624d5f5aa8ff7" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+                PRIMARY KEY ("game_metadata_id", "playstash_game_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_game_metadata_gamevault_games_gamevault_game"("game_metadata_id", "gamevault_game_id")
+            INSERT INTO "temporary_game_metadata_playstash_games_playstash_game"("game_metadata_id", "playstash_game_id")
             SELECT "game_metadata_id",
-                "gamevault_game_id"
-            FROM "game_metadata_gamevault_games_gamevault_game"
+                "playstash_game_id"
+            FROM "game_metadata_playstash_games_playstash_game"
         `);
     await queryRunner.query(`
-            DROP TABLE "game_metadata_gamevault_games_gamevault_game"
+            DROP TABLE "game_metadata_playstash_games_playstash_game"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_game_metadata_gamevault_games_gamevault_game"
-                RENAME TO "game_metadata_gamevault_games_gamevault_game"
+            ALTER TABLE "temporary_game_metadata_playstash_games_playstash_game"
+                RENAME TO "game_metadata_playstash_games_playstash_game"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_gamevault_games_gamevault_game" ("game_metadata_id")
+            CREATE INDEX "IDX_178abeeb628ebcdb70239c08d4" ON "game_metadata_playstash_games_playstash_game" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_gamevault_games_gamevault_game" ("gamevault_game_id")
+            CREATE INDEX "IDX_c5afe975cb06f9624d5f5aa8ff" ON "game_metadata_playstash_games_playstash_game" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6d9f174cdbce41bb5b934271a9"
+            DROP INDEX IF EXISTS "IDX_6d9f174cdbce41bb5b934271a9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_71ffc2cb90c863a5c225efa295"
+            DROP INDEX IF EXISTS "IDX_71ffc2cb90c863a5c225efa295"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_publishers_publisher_metadata" (
@@ -2980,10 +2993,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_71ffc2cb90c863a5c225efa295" ON "game_metadata_publishers_publisher_metadata" ("publisher_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2b99b13a4b75f1396c49990e6d"
+            DROP INDEX IF EXISTS "IDX_2b99b13a4b75f1396c49990e6d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_3741d615695a161ffc5a41e748"
+            DROP INDEX IF EXISTS "IDX_3741d615695a161ffc5a41e748"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_developers_developer_metadata" (
@@ -3014,10 +3027,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_3741d615695a161ffc5a41e748" ON "game_metadata_developers_developer_metadata" ("developer_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f6c8361e5e167251a06355c168"
+            DROP INDEX IF EXISTS "IDX_f6c8361e5e167251a06355c168"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_a4f3fec63ccb14d466924a11ef"
+            DROP INDEX IF EXISTS "IDX_a4f3fec63ccb14d466924a11ef"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_tags_tag_metadata" (
@@ -3048,10 +3061,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_a4f3fec63ccb14d466924a11ef" ON "game_metadata_tags_tag_metadata" ("tag_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_c7d2d3ca1a28eab7d55e99ff24"
+            DROP INDEX IF EXISTS "IDX_c7d2d3ca1a28eab7d55e99ff24"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0482ce35adf40c9128eaa1ae89"
+            DROP INDEX IF EXISTS "IDX_0482ce35adf40c9128eaa1ae89"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_genres_genre_metadata" (
@@ -3082,58 +3095,58 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_0482ce35adf40c9128eaa1ae89" ON "game_metadata_genres_genre_metadata" ("genre_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8602b8a76c7952d1155118933f"
+            DROP INDEX IF EXISTS "IDX_8602b8a76c7952d1155118933f"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8"
+            DROP INDEX IF EXISTS "IDX_0b9f583ebc16b0bb8cbfaf00f8"
         `);
     await queryRunner.query(`
-            CREATE TABLE "temporary_gamevault_game_provider_metadata_game_metadata" (
-                "gamevault_game_id" integer NOT NULL,
+            CREATE TABLE "temporary_playstash_game_provider_metadata_game_metadata" (
+                "playstash_game_id" integer NOT NULL,
                 "game_metadata_id" integer NOT NULL,
-                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+                CONSTRAINT "FK_8602b8a76c7952d1155118933f4" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
                 CONSTRAINT "FK_0b9f583ebc16b0bb8cbfaf00f8f" FOREIGN KEY ("game_metadata_id") REFERENCES "game_metadata" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                PRIMARY KEY ("gamevault_game_id", "game_metadata_id")
+                PRIMARY KEY ("playstash_game_id", "game_metadata_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_gamevault_game_provider_metadata_game_metadata"("gamevault_game_id", "game_metadata_id")
-            SELECT "gamevault_game_id",
+            INSERT INTO "temporary_playstash_game_provider_metadata_game_metadata"("playstash_game_id", "game_metadata_id")
+            SELECT "playstash_game_id",
                 "game_metadata_id"
-            FROM "gamevault_game_provider_metadata_game_metadata"
+            FROM "playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            DROP TABLE "gamevault_game_provider_metadata_game_metadata"
+            DROP TABLE "playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            ALTER TABLE "temporary_gamevault_game_provider_metadata_game_metadata"
-                RENAME TO "gamevault_game_provider_metadata_game_metadata"
+            ALTER TABLE "temporary_playstash_game_provider_metadata_game_metadata"
+                RENAME TO "playstash_game_provider_metadata_game_metadata"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "gamevault_game_provider_metadata_game_metadata" ("gamevault_game_id")
+            CREATE INDEX "IDX_8602b8a76c7952d1155118933f" ON "playstash_game_provider_metadata_game_metadata" ("playstash_game_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "gamevault_game_provider_metadata_game_metadata" ("game_metadata_id")
+            CREATE INDEX "IDX_0b9f583ebc16b0bb8cbfaf00f8" ON "playstash_game_provider_metadata_game_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6f00464edf85ddfedbd2580842"
+            DROP INDEX IF EXISTS "IDX_6f00464edf85ddfedbd2580842"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_3c8d93fdd9e34a97f5a5903129"
+            DROP INDEX IF EXISTS "IDX_3c8d93fdd9e34a97f5a5903129"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_bookmark" (
-                "gamevault_user_id" integer NOT NULL,
-                "gamevault_game_id" integer NOT NULL,
-                CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("gamevault_user_id") REFERENCES "gamevault_user" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-                CONSTRAINT "FK_3c8d93fdd9e34a97f5a5903129b" FOREIGN KEY ("gamevault_game_id") REFERENCES "gamevault_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
-                PRIMARY KEY ("gamevault_user_id", "gamevault_game_id")
+                "playstash_user_id" integer NOT NULL,
+                "playstash_game_id" integer NOT NULL,
+                CONSTRAINT "FK_6f00464edf85ddfedbd25808428" FOREIGN KEY ("playstash_user_id") REFERENCES "playstash_user" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+                CONSTRAINT "FK_3c8d93fdd9e34a97f5a5903129b" FOREIGN KEY ("playstash_game_id") REFERENCES "playstash_game" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+                PRIMARY KEY ("playstash_user_id", "playstash_game_id")
             )
         `);
     await queryRunner.query(`
-            INSERT INTO "temporary_bookmark"("gamevault_user_id", "gamevault_game_id")
-            SELECT "gamevault_user_id",
-                "gamevault_game_id"
+            INSERT INTO "temporary_bookmark"("playstash_user_id", "playstash_game_id")
+            SELECT "playstash_user_id",
+                "playstash_game_id"
             FROM "bookmark"
         `);
     await queryRunner.query(`
@@ -3144,10 +3157,10 @@ export class V13Final1728421385000 implements MigrationInterface {
                 RENAME TO "bookmark"
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("gamevault_user_id")
+            CREATE INDEX "IDX_6f00464edf85ddfedbd2580842" ON "bookmark" ("playstash_user_id")
         `);
     await queryRunner.query(`
-            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("gamevault_game_id")
+            CREATE INDEX "IDX_3c8d93fdd9e34a97f5a5903129" ON "bookmark" ("playstash_game_id")
         `);
   }
 
@@ -3229,13 +3242,13 @@ export class V13Final1728421385000 implements MigrationInterface {
 
   private async part4_enable_auto_increment(queryRunner: QueryRunner) {
     await queryRunner.query(`
-            DROP INDEX "IDX_907a95c00ab6d81140c1a1b4a3"
+            DROP INDEX IF EXISTS "IDX_907a95c00ab6d81140c1a1b4a3"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_54a35803b834868362fa4c2629"
+            DROP INDEX IF EXISTS "IDX_54a35803b834868362fa4c2629"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_039ad5528f914321b2fc6b1fff"
+            DROP INDEX IF EXISTS "IDX_039ad5528f914321b2fc6b1fff"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_developer" (
@@ -3286,13 +3299,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_039ad5528f914321b2fc6b1fff" ON "v12_developer" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_cf2ba84ceb90f80049fce15995"
+            DROP INDEX IF EXISTS "IDX_cf2ba84ceb90f80049fce15995"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8a0e8d0364e3637f00d655af94"
+            DROP INDEX IF EXISTS "IDX_8a0e8d0364e3637f00d655af94"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_888c3736e64117aba956e90f65"
+            DROP INDEX IF EXISTS "IDX_888c3736e64117aba956e90f65"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_genre" (
@@ -3343,13 +3356,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_888c3736e64117aba956e90f65" ON "v12_genre" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f2f05b756501810d84eea1d651"
+            DROP INDEX IF EXISTS "IDX_f2f05b756501810d84eea1d651"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2263bfd2f8ed59b0f54f6d3ae9"
+            DROP INDEX IF EXISTS "IDX_2263bfd2f8ed59b0f54f6d3ae9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ba10ea475597187820c3b4fd28"
+            DROP INDEX IF EXISTS "IDX_ba10ea475597187820c3b4fd28"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_publisher" (
@@ -3400,13 +3413,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_ba10ea475597187820c3b4fd28" ON "v12_publisher" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e2db9da8c8288f3ff795994d4d"
+            DROP INDEX IF EXISTS "IDX_e2db9da8c8288f3ff795994d4d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6695d0cc38a598edd65fcba0ee"
+            DROP INDEX IF EXISTS "IDX_6695d0cc38a598edd65fcba0ee"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a2e62473659b6263b17a5497c"
+            DROP INDEX IF EXISTS "IDX_4a2e62473659b6263b17a5497c"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_store" (
@@ -3457,13 +3470,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_4a2e62473659b6263b17a5497c" ON "v12_store" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0e129f8ad40f587596e0f8d8ff"
+            DROP INDEX IF EXISTS "IDX_0e129f8ad40f587596e0f8d8ff"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_636a93cb92150e4660bf07a3bc"
+            DROP INDEX IF EXISTS "IDX_636a93cb92150e4660bf07a3bc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_b60ff4525bb354df761a2eba44"
+            DROP INDEX IF EXISTS "IDX_b60ff4525bb354df761a2eba44"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_tag" (
@@ -3514,10 +3527,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_b60ff4525bb354df761a2eba44" ON "v12_tag" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_3741d615695a161ffc5a41e748"
+            DROP INDEX IF EXISTS "IDX_3741d615695a161ffc5a41e748"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2b99b13a4b75f1396c49990e6d"
+            DROP INDEX IF EXISTS "IDX_2b99b13a4b75f1396c49990e6d"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_developers_developer_metadata" (
@@ -3546,19 +3559,19 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_2b99b13a4b75f1396c49990e6d" ON "game_metadata_developers_developer_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "UQ_DEVELOPER_METADATA"
+            DROP INDEX IF EXISTS "UQ_DEVELOPER_METADATA"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_16b10ff59b57ea2b920ccdec2d"
+            DROP INDEX IF EXISTS "IDX_16b10ff59b57ea2b920ccdec2d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_414ccae60b54eb1580bca0c28f"
+            DROP INDEX IF EXISTS "IDX_414ccae60b54eb1580bca0c28f"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8d642e3a72cb76d343639c3281"
+            DROP INDEX IF EXISTS "IDX_8d642e3a72cb76d343639c3281"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_3797936110f483ab684d700e48"
+            DROP INDEX IF EXISTS "IDX_3797936110f483ab684d700e48"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_developer_metadata" (
@@ -3616,10 +3629,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_3797936110f483ab684d700e48" ON "developer_metadata" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0482ce35adf40c9128eaa1ae89"
+            DROP INDEX IF EXISTS "IDX_0482ce35adf40c9128eaa1ae89"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_c7d2d3ca1a28eab7d55e99ff24"
+            DROP INDEX IF EXISTS "IDX_c7d2d3ca1a28eab7d55e99ff24"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_genres_genre_metadata" (
@@ -3648,19 +3661,19 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_c7d2d3ca1a28eab7d55e99ff24" ON "game_metadata_genres_genre_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "UQ_GENRE_METADATA"
+            DROP INDEX IF EXISTS "UQ_GENRE_METADATA"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_bf40614141adff790cb659c902"
+            DROP INDEX IF EXISTS "IDX_bf40614141adff790cb659c902"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_7258256a052ef3ff3e882fa471"
+            DROP INDEX IF EXISTS "IDX_7258256a052ef3ff3e882fa471"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_bcbc44cdfbf2977f55c52651aa"
+            DROP INDEX IF EXISTS "IDX_bcbc44cdfbf2977f55c52651aa"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ab9cd344970e9df47d3d6c8b5b"
+            DROP INDEX IF EXISTS "IDX_ab9cd344970e9df47d3d6c8b5b"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_genre_metadata" (
@@ -3718,10 +3731,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_ab9cd344970e9df47d3d6c8b5b" ON "genre_metadata" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_71ffc2cb90c863a5c225efa295"
+            DROP INDEX IF EXISTS "IDX_71ffc2cb90c863a5c225efa295"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6d9f174cdbce41bb5b934271a9"
+            DROP INDEX IF EXISTS "IDX_6d9f174cdbce41bb5b934271a9"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_publishers_publisher_metadata" (
@@ -3750,19 +3763,19 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_6d9f174cdbce41bb5b934271a9" ON "game_metadata_publishers_publisher_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "UQ_PUBLISHER_METADATA"
+            DROP INDEX IF EXISTS "UQ_PUBLISHER_METADATA"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_73c3afaa08bae7e58471e83c8e"
+            DROP INDEX IF EXISTS "IDX_73c3afaa08bae7e58471e83c8e"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e9ec06cab4b92d64ba257b4eed"
+            DROP INDEX IF EXISTS "IDX_e9ec06cab4b92d64ba257b4eed"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_16f6954549be1a71c53654c939"
+            DROP INDEX IF EXISTS "IDX_16f6954549be1a71c53654c939"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_73e957f8e68ba1111ac3b79adc"
+            DROP INDEX IF EXISTS "IDX_73e957f8e68ba1111ac3b79adc"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_publisher_metadata" (
@@ -3820,10 +3833,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_73e957f8e68ba1111ac3b79adc" ON "publisher_metadata" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_a4f3fec63ccb14d466924a11ef"
+            DROP INDEX IF EXISTS "IDX_a4f3fec63ccb14d466924a11ef"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f6c8361e5e167251a06355c168"
+            DROP INDEX IF EXISTS "IDX_f6c8361e5e167251a06355c168"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_tags_tag_metadata" (
@@ -3852,19 +3865,19 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f6c8361e5e167251a06355c168" ON "game_metadata_tags_tag_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "UQ_TAG_METADATA"
+            DROP INDEX IF EXISTS "UQ_TAG_METADATA"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_a5f8eb5e083ca5fb83cd152777"
+            DROP INDEX IF EXISTS "IDX_a5f8eb5e083ca5fb83cd152777"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_a1b923a5cf28e468500e7e0b59"
+            DROP INDEX IF EXISTS "IDX_a1b923a5cf28e468500e7e0b59"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_d914734a79b8145479a748d0a5"
+            DROP INDEX IF EXISTS "IDX_d914734a79b8145479a748d0a5"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_96d7cccf17f8cb2cfa25388cbd"
+            DROP INDEX IF EXISTS "IDX_96d7cccf17f8cb2cfa25388cbd"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_tag_metadata" (
@@ -3922,13 +3935,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_96d7cccf17f8cb2cfa25388cbd" ON "tag_metadata" ("id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_907a95c00ab6d81140c1a1b4a3"
+            DROP INDEX IF EXISTS "IDX_907a95c00ab6d81140c1a1b4a3"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_54a35803b834868362fa4c2629"
+            DROP INDEX IF EXISTS "IDX_54a35803b834868362fa4c2629"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_039ad5528f914321b2fc6b1fff"
+            DROP INDEX IF EXISTS "IDX_039ad5528f914321b2fc6b1fff"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_developer" (
@@ -3979,13 +3992,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_039ad5528f914321b2fc6b1fff" ON "v12_developer" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_cf2ba84ceb90f80049fce15995"
+            DROP INDEX IF EXISTS "IDX_cf2ba84ceb90f80049fce15995"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_8a0e8d0364e3637f00d655af94"
+            DROP INDEX IF EXISTS "IDX_8a0e8d0364e3637f00d655af94"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_888c3736e64117aba956e90f65"
+            DROP INDEX IF EXISTS "IDX_888c3736e64117aba956e90f65"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_genre" (
@@ -4036,13 +4049,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_888c3736e64117aba956e90f65" ON "v12_genre" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f2f05b756501810d84eea1d651"
+            DROP INDEX IF EXISTS "IDX_f2f05b756501810d84eea1d651"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2263bfd2f8ed59b0f54f6d3ae9"
+            DROP INDEX IF EXISTS "IDX_2263bfd2f8ed59b0f54f6d3ae9"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_ba10ea475597187820c3b4fd28"
+            DROP INDEX IF EXISTS "IDX_ba10ea475597187820c3b4fd28"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_publisher" (
@@ -4093,13 +4106,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_ba10ea475597187820c3b4fd28" ON "v12_publisher" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_e2db9da8c8288f3ff795994d4d"
+            DROP INDEX IF EXISTS "IDX_e2db9da8c8288f3ff795994d4d"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6695d0cc38a598edd65fcba0ee"
+            DROP INDEX IF EXISTS "IDX_6695d0cc38a598edd65fcba0ee"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_4a2e62473659b6263b17a5497c"
+            DROP INDEX IF EXISTS "IDX_4a2e62473659b6263b17a5497c"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_store" (
@@ -4150,13 +4163,13 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_4a2e62473659b6263b17a5497c" ON "v12_store" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0e129f8ad40f587596e0f8d8ff"
+            DROP INDEX IF EXISTS "IDX_0e129f8ad40f587596e0f8d8ff"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_636a93cb92150e4660bf07a3bc"
+            DROP INDEX IF EXISTS "IDX_636a93cb92150e4660bf07a3bc"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_b60ff4525bb354df761a2eba44"
+            DROP INDEX IF EXISTS "IDX_b60ff4525bb354df761a2eba44"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_v12_tag" (
@@ -4207,10 +4220,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_b60ff4525bb354df761a2eba44" ON "v12_tag" ("rawg_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_71ffc2cb90c863a5c225efa295"
+            DROP INDEX IF EXISTS "IDX_71ffc2cb90c863a5c225efa295"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_6d9f174cdbce41bb5b934271a9"
+            DROP INDEX IF EXISTS "IDX_6d9f174cdbce41bb5b934271a9"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_publishers_publisher_metadata" (
@@ -4241,10 +4254,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_6d9f174cdbce41bb5b934271a9" ON "game_metadata_publishers_publisher_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_3741d615695a161ffc5a41e748"
+            DROP INDEX IF EXISTS "IDX_3741d615695a161ffc5a41e748"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_2b99b13a4b75f1396c49990e6d"
+            DROP INDEX IF EXISTS "IDX_2b99b13a4b75f1396c49990e6d"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_developers_developer_metadata" (
@@ -4275,10 +4288,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_2b99b13a4b75f1396c49990e6d" ON "game_metadata_developers_developer_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_a4f3fec63ccb14d466924a11ef"
+            DROP INDEX IF EXISTS "IDX_a4f3fec63ccb14d466924a11ef"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_f6c8361e5e167251a06355c168"
+            DROP INDEX IF EXISTS "IDX_f6c8361e5e167251a06355c168"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_tags_tag_metadata" (
@@ -4309,10 +4322,10 @@ export class V13Final1728421385000 implements MigrationInterface {
             CREATE INDEX "IDX_f6c8361e5e167251a06355c168" ON "game_metadata_tags_tag_metadata" ("game_metadata_id")
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_0482ce35adf40c9128eaa1ae89"
+            DROP INDEX IF EXISTS "IDX_0482ce35adf40c9128eaa1ae89"
         `);
     await queryRunner.query(`
-            DROP INDEX "IDX_c7d2d3ca1a28eab7d55e99ff24"
+            DROP INDEX IF EXISTS "IDX_c7d2d3ca1a28eab7d55e99ff24"
         `);
     await queryRunner.query(`
             CREATE TABLE "temporary_game_metadata_genres_genre_metadata" (
@@ -4356,7 +4369,7 @@ export class V13Final1728421385000 implements MigrationInterface {
     );
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_game_stores_v12_store"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_game_tags_v12_tag"`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "v12_gamevault_user"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "v12_playstash_user"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_genre"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_image"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "v12_progress"`);
@@ -4366,7 +4379,7 @@ export class V13Final1728421385000 implements MigrationInterface {
   }
 
   private async part6_sorting_title(queryRunner: QueryRunner) {
-    const gameRepository = queryRunner.manager.getRepository("gamevault_game");
+    const gameRepository = queryRunner.manager.getRepository("playstash_game");
 
     // Fetch all games
     const games = await gameRepository.find({
@@ -4584,7 +4597,7 @@ export class V13Final1728421385000 implements MigrationInterface {
         message: `Migrating game ID ${game.id}, Title: ${game.title}`,
       });
 
-      const migratedGame = await queryRunner.manager.save(GamevaultGame, {
+      const migratedGame = await queryRunner.manager.save(PlaystashGame, {
         id: game.id,
         file_path: game.file_path,
         size: game.size,
@@ -4629,7 +4642,7 @@ export class V13Final1728421385000 implements MigrationInterface {
             background: background ?? undefined,
           });
           migratedGame.user_metadata = userMetadata;
-          await queryRunner.manager.save(GamevaultGame, migratedGame);
+          await queryRunner.manager.save(PlaystashGame, migratedGame);
           this.logger.log({
             message: `User metadata saved successfully. Metadata ID: ${userMetadata.id}, Game ID: ${game.id}, Title: ${userMetadata.title}`,
           });
@@ -4720,7 +4733,7 @@ export class V13Final1728421385000 implements MigrationInterface {
       }
 
       const savedGame = await queryRunner.manager.save(
-        GamevaultGame,
+        PlaystashGame,
         migratedGame,
       );
       this.logger.log({ message: "Migrated Game Successfully.", savedGame });
@@ -4730,7 +4743,7 @@ export class V13Final1728421385000 implements MigrationInterface {
   private async migrateUsersAndBookmarks(
     queryRunner: QueryRunner,
   ): Promise<void> {
-    const users = await queryRunner.manager.find(GamevaultUserV12, {
+    const users = await queryRunner.manager.find(PlaystashUserV12, {
       withDeleted: true,
       select: {
         id: true,
@@ -4789,12 +4802,12 @@ export class V13Final1728421385000 implements MigrationInterface {
         });
 
       const bookmarkedGames = user.bookmarked_games?.length
-        ? await queryRunner.manager.findBy(GamevaultGame, {
+        ? await queryRunner.manager.findBy(PlaystashGame, {
             id: In(user.bookmarked_games.map((b) => b.id)),
           })
         : [];
 
-      const newUser = await queryRunner.manager.save(GamevaultUser, {
+      const newUser = await queryRunner.manager.save(PlaystashUser, {
         id: user.id,
         username: user.username,
         password: user.password,
@@ -4835,14 +4848,14 @@ export class V13Final1728421385000 implements MigrationInterface {
       });
 
       const user = progress.user
-        ? await queryRunner.manager.findOne(GamevaultUser, {
+        ? await queryRunner.manager.findOne(PlaystashUser, {
             where: { id: progress.user.id },
             withDeleted: true,
           })
         : undefined;
 
       const game = progress.game
-        ? await queryRunner.manager.findOne(GamevaultGame, {
+        ? await queryRunner.manager.findOne(PlaystashGame, {
             where: { id: progress.game.id },
             withDeleted: true,
           })

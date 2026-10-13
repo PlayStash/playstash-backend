@@ -12,11 +12,11 @@ import { GameVersion } from "./game-version.entity.js";
 import { GameVersionsController } from "./game-versions.controller.js";
 import { GamesController } from "./games.controller.js";
 import { GamesService } from "./games.service.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GamevaultGame, GameVersion, Progress]),
+    TypeOrmModule.forFeature([PlaystashGame, GameVersion, Progress]),
     MediaModule,
     MetadataModule,
     ProgressModule,

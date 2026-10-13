@@ -2,7 +2,6 @@
 name: 🪲 Report a Bug
 about: Does something not work correctly?
 labels: ["🎛️ server", "🪲 bug"]
-projects: "Phalcode/4"
 ---
 
 **Describe the bug**

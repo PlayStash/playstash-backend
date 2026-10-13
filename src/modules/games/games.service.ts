@@ -22,7 +22,7 @@ import {
   toFindOptionsRelations,
   toFindOptionsSelect,
 } from "../../globals.js";
-import { logGamevaultGame } from "../../logging.js";
+import { logPlaystashGame } from "../../logging.js";
 import { DeveloperMetadata } from "../metadata/developers/developer.metadata.entity.js";
 import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
 import { GameMetadataService } from "../metadata/games/game.metadata.service.js";
@@ -31,7 +31,7 @@ import { MetadataService } from "../metadata/metadata.service.js";
 import { PublisherMetadata } from "../metadata/publishers/publisher.metadata.entity.js";
 import { TagMetadata } from "../metadata/tags/tag.metadata.entity.js";
 import { GameVersion } from "./game-version.entity.js";
-import { GamevaultGame } from "./gamevault-game.entity.js";
+import { PlaystashGame } from "./playstash-game.entity.js";
 import { GameExistence } from "./models/game-existence.enum.js";
 import { type UpdateGameDto } from "./models/update-game.dto.js";
 
@@ -40,7 +40,7 @@ const { kebabCase, toLower } = lodash;
 @Injectable()
 export class GamesService {
   private readonly logger = new Logger(this.constructor.name);
-  private readonly defaultRelations = toFindOptionsRelations<GamevaultGame>([
+  private readonly defaultRelations = toFindOptionsRelations<PlaystashGame>([
     "progresses",
     "progresses.user",
     "bookmarked_users",
@@ -50,8 +50,8 @@ export class GamesService {
   ]);
 
   constructor(
-    @InjectRepository(GamevaultGame)
-    private readonly gamesRepository: Repository<GamevaultGame>,
+    @InjectRepository(PlaystashGame)
+    private readonly gamesRepository: Repository<PlaystashGame>,
     @InjectRepository(GameVersion)
     private readonly gameVersionRepository: Repository<GameVersion>,
     @Inject(forwardRef(() => MetadataService))
@@ -64,9 +64,9 @@ export class GamesService {
   public async findOneByGameIdOrFail(
     id: number,
     options: FindOptions,
-  ): Promise<GamevaultGame> {
+  ): Promise<PlaystashGame> {
     try {
-      const findParameters: FindOneOptions<GamevaultGame> = {
+      const findParameters: FindOneOptions<PlaystashGame> = {
         where: { id },
         relationLoadStrategy: "query",
         loadEagerRelations: true,
@@ -96,13 +96,13 @@ export class GamesService {
   }
 
   /** Retrieves all games from the database. */
-  public async find(options: FindOptions): Promise<GamevaultGame[]> {
-    const findParameters: FindManyOptions<GamevaultGame> = {
+  public async find(options: FindOptions): Promise<PlaystashGame[]> {
+    const findParameters: FindManyOptions<PlaystashGame> = {
       relationLoadStrategy: "query",
     };
 
     if (options.select) {
-      findParameters.select = toFindOptionsSelect<GamevaultGame>(
+      findParameters.select = toFindOptionsSelect<PlaystashGame>(
         options.select,
       );
     }
@@ -111,7 +111,7 @@ export class GamesService {
       if (options.loadRelations === true) {
         findParameters.relations = this.defaultRelations;
       } else if (Array.isArray(options.loadRelations))
-        findParameters.relations = toFindOptionsRelations<GamevaultGame>(
+        findParameters.relations = toFindOptionsRelations<PlaystashGame>(
           options.loadRelations,
         );
     }
@@ -122,7 +122,7 @@ export class GamesService {
 
     if (options.filterByAge) {
       if (!options.loadRelations) {
-        findParameters.relations = toFindOptionsRelations<GamevaultGame>([
+        findParameters.relations = toFindOptionsRelations<PlaystashGame>([
           "metadata",
         ]);
       }
@@ -136,11 +136,11 @@ export class GamesService {
     return this.gamesRepository.find(findParameters);
   }
 
-  public async findRandom(options: FindOptions): Promise<GamevaultGame> {
-    const findParameters: FindManyOptions<GamevaultGame> = {
+  public async findRandom(options: FindOptions): Promise<PlaystashGame> {
+    const findParameters: FindManyOptions<PlaystashGame> = {
       relationLoadStrategy: "query",
       loadEagerRelations: false,
-      select: toFindOptionsSelect<GamevaultGame>(["id"]),
+      select: toFindOptionsSelect<PlaystashGame>(["id"]),
     };
 
     if (options.loadDeletedEntities) {
@@ -148,7 +148,7 @@ export class GamesService {
     }
 
     if (options.filterByAge) {
-      findParameters.relations = toFindOptionsRelations<GamevaultGame>([
+      findParameters.relations = toFindOptionsRelations<PlaystashGame>([
         "metadata",
       ]);
       findParameters.where = {
@@ -173,12 +173,12 @@ export class GamesService {
   }
 
   /** Save a game to the database. */
-  public async save(game: GamevaultGame): Promise<GamevaultGame> {
+  public async save(game: PlaystashGame): Promise<PlaystashGame> {
     return this.gamesRepository.save(game);
   }
 
   /** Soft delete a game from the database. */
-  public async delete(id: number): Promise<GamevaultGame> {
+  public async delete(id: number): Promise<PlaystashGame> {
     // Remove effective metadata
     await this.metadataService.unmap(id, null);
     // Soft remove the game
@@ -195,7 +195,7 @@ export class GamesService {
       for (const request of dto.mapping_requests) {
         this.logger.log({
           message: "Handling Mapping Request",
-          game: logGamevaultGame(game),
+          game: logPlaystashGame(game),
           details: request,
         });
         if (request.provider_data_id) {
@@ -214,7 +214,7 @@ export class GamesService {
     if (dto.user_metadata) {
       this.logger.debug({
         message: "Updating User Metadata",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         user_metadata: dto.user_metadata,
       });
       const updatedUserMetadata: DeepPartial<GameMetadata> =
@@ -373,12 +373,12 @@ export class GamesService {
       const updatedGame = await this.save(game);
       this.logger.debug({
         message: "Game User Metadata updated",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         user_metadata: updatedGame.user_metadata,
       });
       this.logger.log({
         message: "Game User Metadata updated",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
     }
 
@@ -386,7 +386,7 @@ export class GamesService {
   }
 
   /** Restore a game that has been soft deleted. */
-  public async restore(id: number): Promise<GamevaultGame> {
+  public async restore(id: number): Promise<PlaystashGame> {
     await this.gamesRepository.recover({ id });
     await this.metadataService.merge(id);
     return this.findOneByGameIdOrFail(id, {
@@ -396,8 +396,8 @@ export class GamesService {
 
   /** Checks if a game exists in the database. */
   public async checkIfExistsInDatabase(
-    game: GamevaultGame,
-  ): Promise<[GameExistence, GamevaultGame | undefined]> {
+    game: PlaystashGame,
+  ): Promise<[GameExistence, PlaystashGame | undefined]> {
     if (!game.file_path || !game.title) {
       throw new InternalServerErrorException(
         game,
@@ -417,8 +417,8 @@ export class GamesService {
     if (foundGame) {
       this.logger.debug({
         message: "Matched indexed game by exact version file path.",
-        game: logGamevaultGame(game),
-        existingGame: logGamevaultGame(foundGame),
+        game: logPlaystashGame(game),
+        existingGame: logPlaystashGame(foundGame),
       });
     }
 
@@ -435,8 +435,8 @@ export class GamesService {
       if (foundGame) {
         this.logger.debug({
           message: "Matched indexed game by legacy game file path.",
-          game: logGamevaultGame(game),
-          existingGame: logGamevaultGame(foundGame),
+          game: logPlaystashGame(game),
+          existingGame: logPlaystashGame(foundGame),
         });
       }
     }
@@ -454,7 +454,7 @@ export class GamesService {
 
       this.logger.debug({
         message: "Trying title-based duplicate matching.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
         candidateCount: titleCandidates.length,
         hasReleaseYear: !!game.release_date,
       });
@@ -468,8 +468,8 @@ export class GamesService {
         if (foundGame) {
           this.logger.debug({
             message: "Matched by title and release year.",
-            game: logGamevaultGame(game),
-            existingGame: logGamevaultGame(foundGame),
+            game: logPlaystashGame(game),
+            existingGame: logPlaystashGame(foundGame),
             releaseYear: this.getReleaseYear(game.release_date),
           });
         }
@@ -482,8 +482,8 @@ export class GamesService {
         if (foundGame) {
           this.logger.debug({
             message: "Matched no-year game into no-year title bucket.",
-            game: logGamevaultGame(game),
-            existingGame: logGamevaultGame(foundGame),
+            game: logPlaystashGame(game),
+            existingGame: logPlaystashGame(foundGame),
           });
         }
 
@@ -494,8 +494,8 @@ export class GamesService {
           if (foundGame) {
             this.logger.debug({
               message: "Matched no-year game by legacy title fallback.",
-              game: logGamevaultGame(game),
-              existingGame: logGamevaultGame(foundGame),
+              game: logPlaystashGame(game),
+              existingGame: logPlaystashGame(foundGame),
             });
           }
         }
@@ -505,7 +505,7 @@ export class GamesService {
     if (!foundGame) {
       this.logger.debug({
         message: "No duplicate game match found.",
-        game: logGamevaultGame(game),
+        game: logPlaystashGame(game),
       });
       return [GameExistence.DOES_NOT_EXIST, undefined];
     }

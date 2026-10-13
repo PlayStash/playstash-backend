@@ -3,6 +3,7 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiSecurity,
   ApiTags,
@@ -34,6 +35,7 @@ export class MetadataController {
   }
 
   @Get("/providers/:provider_slug/search")
+  @ApiParam({ name: "provider_slug", required: true, type: String })
   @ApiOperation({
     summary: "Search for games using a metadata provider.",
     operationId: "getSearchResultsByProvider",

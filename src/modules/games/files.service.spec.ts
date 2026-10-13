@@ -6,6 +6,7 @@ import {
 import { SchedulerRegistry } from "@nestjs/schedule";
 import * as fsExtraModule from "fs-extra";
 import { constants } from "fs-extra";
+import { join } from "path";
 import type { Mock, Mocked } from "vitest";
 import configurationModule from "../../configuration.js";
 import { MetadataService } from "../metadata/metadata.service.js";
@@ -45,7 +46,7 @@ vi.mock("../../globals.js", async () => {
 });
 
 vi.mock("../../logging.js", async () => ({
-  logGamevaultGame: vi.fn((g) => ({ id: g?.id, path: g?.file_path })),
+  logPlaystashGame: vi.fn((g) => ({ id: g?.id, path: g?.file_path })),
 }));
 
 vi.mock("fs-extra", async (importOriginal) => {
@@ -204,14 +205,14 @@ describe("FilesService", () => {
         constants.W_OK,
       );
       expect(fsExtra.writeFile).toHaveBeenCalledWith(
-        "/tmp/test-files/My Game.zip",
+        join("/tmp/test-files", "My Game.zip"),
         expect.any(Buffer),
       );
       expect((service as any).index).toHaveBeenCalledWith(
-        "/tmp/test-files/My Game.zip",
+        join("/tmp/test-files", "My Game.zip"),
         expect.any(Object),
       );
-      expect(result).toEqual({ path: "/tmp/test-files/My Game.zip" });
+      expect(result).toEqual({ path: join("/tmp/test-files", "My Game.zip") });
     });
   });
 
@@ -230,12 +231,12 @@ describe("FilesService", () => {
     it("should reject deletion when file does not exist", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 1,
-        file_path: "/tmp/test-files/My Game.zip",
+        file_path: join("/tmp/test-files", "My Game.zip"),
       } as any);
       gameVersionRepository.find.mockResolvedValueOnce([
         {
           id: 1,
-          file_path: "/tmp/test-files/My Game.zip",
+          file_path: join("/tmp/test-files", "My Game.zip"),
           version: "v1.0.0",
           size: 1000n,
           type: "WINDOWS_SETUP",
@@ -253,12 +254,12 @@ describe("FilesService", () => {
     it("should reject deletion when files volume is not writable", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 1,
-        file_path: "/tmp/test-files/My Game.zip",
+        file_path: join("/tmp/test-files", "My Game.zip"),
       } as any);
       gameVersionRepository.find.mockResolvedValueOnce([
         {
           id: 1,
-          file_path: "/tmp/test-files/My Game.zip",
+          file_path: join("/tmp/test-files", "My Game.zip"),
           version: "v1.0.0",
           size: 1000n,
           type: "WINDOWS_SETUP",
@@ -277,7 +278,7 @@ describe("FilesService", () => {
     it("should delete explicitly requested version by version id", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 1,
-        file_path: "/tmp/test-files/My Game.zip",
+        file_path: join("/tmp/test-files", "My Game.zip"),
       } as any);
       gameVersionRepository.find.mockResolvedValueOnce([
         {
@@ -365,13 +366,13 @@ describe("FilesService", () => {
     it("should return a StreamableFile in testing mock mode", async () => {
       gamesService.findOneByGameIdOrFail.mockResolvedValue({
         id: 42,
-        file_path: "/tmp/test-files/My Game.zip",
+        file_path: join("/tmp/test-files", "My Game.zip"),
         download_count: 0,
       } as any);
       gameVersionRepository.find.mockResolvedValueOnce([
         {
           id: 1,
-          file_path: "/tmp/test-files/My Game.zip",
+          file_path: join("/tmp/test-files", "My Game.zip"),
           version: "v1.0.0",
           size: 1000n,
           type: "WINDOWS_SETUP",
@@ -430,7 +431,7 @@ describe("FilesService", () => {
         .spyOn(localService as any, "checkIntegrity")
         .mockResolvedValue([]);
 
-      await (localService as any).index("/tmp/test-files/My Game.zip");
+      await (localService as any).index(join("/tmp/test-files", "My Game.zip"));
       vi.advanceTimersByTime(5000);
       await Promise.resolve();
 

@@ -2,27 +2,27 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Column, Entity, Index, ManyToOne, type Relation } from "typeorm";
 
 import { DatabaseEntity } from "../database/database.entity.js";
-import { GamevaultGame } from "../games/gamevault-game.entity.js";
-import { GamevaultUser } from "../users/gamevault-user.entity.js";
+import { PlaystashGame } from "../games/playstash-game.entity.js";
+import { PlaystashUser } from "../users/playstash-user.entity.js";
 import { State } from "./models/state.enum.js";
 
 @Entity()
 export class Progress extends DatabaseEntity {
   @Index()
-  @ManyToOne(() => GamevaultUser, (user) => user.progresses)
+  @ManyToOne(() => PlaystashUser, (user) => user.progresses)
   @ApiPropertyOptional({
     description: "user the progress belongs to",
-    type: () => GamevaultUser,
+    type: () => PlaystashUser,
   })
-  user?: Relation<GamevaultUser>;
+  user?: Relation<PlaystashUser>;
 
   @Index()
-  @ManyToOne(() => GamevaultGame, (game) => game.progresses)
+  @ManyToOne(() => PlaystashGame, (game) => game.progresses)
   @ApiPropertyOptional({
     description: "game the progress belongs to",
-    type: () => GamevaultGame,
+    type: () => PlaystashGame,
   })
-  game?: Relation<GamevaultGame>;
+  game?: Relation<PlaystashGame>;
 
   @Column({ type: "int", default: 0 })
   @ApiProperty({

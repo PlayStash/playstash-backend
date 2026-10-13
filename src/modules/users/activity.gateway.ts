@@ -15,7 +15,7 @@ import { type Server, type Socket } from "socket.io";
 import configuration from "../../configuration.js";
 import { WebsocketExceptionsFilter } from "../../filters/websocket-exceptions.filter.js";
 import { ApiKeyGuard } from "../auth/guards/api-key.guard.js";
-import { GamevaultUser } from "./gamevault-user.entity.js";
+import { PlaystashUser } from "./playstash-user.entity.js";
 import { ActivityState } from "./models/activity-state.enum.js";
 import { type Activity } from "./models/activity.dto.js";
 import { UsersService } from "./users.service.js";
@@ -69,7 +69,7 @@ export class ActivityGateway
     @MessageBody() dto: Activity,
   ) {
     const requestingUser = client as unknown as {
-      user: GamevaultUser;
+      user: PlaystashUser;
     };
     const user = await this.usersService.findOneByUserIdOrFail(
       requestingUser.user.id,

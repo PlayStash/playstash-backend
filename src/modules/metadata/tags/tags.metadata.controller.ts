@@ -18,7 +18,7 @@ import { Repository } from "typeorm";
 import { MinimumRole } from "../../../decorators/minimum-role.decorator.js";
 import { PaginateQueryOptions } from "../../../decorators/pagination.decorator.js";
 import { ApiOkResponsePaginated } from "../../../globals.js";
-import { GamevaultGame } from "../../games/gamevault-game.entity.js";
+import { PlaystashGame } from "../../games/playstash-game.entity.js";
 import { Role } from "../../users/models/role.enum.js";
 import { TagMetadata } from "./tag.metadata.entity.js";
 
@@ -53,12 +53,12 @@ export class TagsController {
       .createQueryBuilder("tag")
       .innerJoin("tag.games", "games")
       .innerJoin(
-        GamevaultGame,
+        PlaystashGame,
         "game",
         "game.metadata_id = games.id AND game.deleted_at IS NULL",
       )
       .where("tag.provider_slug = :provider_slug", {
-        provider_slug: "gamevault",
+        provider_slug: "playstash",
       })
       .groupBy("tag.id");
 
