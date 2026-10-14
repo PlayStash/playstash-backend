@@ -18,7 +18,12 @@ FROM base AS runtime
 ARG SECURITY_REFRESH=local
 RUN test -n "$SECURITY_REFRESH" \
     && apk upgrade --no-cache && apk add --no-cache ca-certificates curl su-exec postgresql18-client postgresql16-client \
-    && pg_versions set-default latest \
+    && test -x /usr/libexec/postgresql16/pg_dump \
+    && test -x /usr/libexec/postgresql16/pg_restore \
+    && for tool in pg_dump pg_restore createdb dropdb psql pg_isready; do \
+         test -x "/usr/libexec/postgresql18/$tool" \
+           && ln -sf "/usr/libexec/postgresql18/$tool" "/usr/bin/$tool" || exit 1; \
+       done \
     && mkdir -p /config /files /media /logs /db /plugins /savefiles \
     && rm -rf /usr/local/lib/node_modules /opt/yarn* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg
