@@ -1,57 +1,123 @@
 # PlayStash on a server
 
-The standard installation needs only a Linux server with Docker Engine and the
-Docker Compose plugin. Images are built by GitHub for AMD64 and ARM64. The image
-includes the web interface, so the server needs no source checkout, compiler,
-GitHub account, registry login, frontend ZIP, environment file or default password.
-
-## Start
-
-Copy `docker-compose.yml` to an empty directory on the server, change into that
-directory, and run:
+Copy `docker-compose.yml` to an empty directory on a Linux server with Docker
+Engine and the Docker Compose plugin, change into that directory, and run:
 
 ```sh
 docker compose up -d
 ```
 
-Open `http://SERVER-IP:8080` and register your own account. The first registered
-account becomes the administrator and is immediately active. Later accounts need
-administrator activation. Complete this first registration before giving other
-people access to the server. There are no shared administrator credentials.
+GitHub builds separate frontend, backend and PostgreSQL images for AMD64 and
+ARM64. Compose downloads and starts all three, prepares persistent directories
+and generates the private database password and authentication key. The server
+needs no source checkout, compiler, registry login or environment file.
 
-The standard Compose file uses a separate PostgreSQL container. It automatically
-starts the database, imports the bundled web interface, creates random private
-database and signing keys and prepares the writable directories. Keep the Compose file in the
-same directory on subsequent starts. The server needs outbound internet access
-for the initial image download and optional external metadata providers.
+Open `http://SERVER-IP:8080` and register your account. The first account becomes
+an active administrator; later accounts require administrator activation. Complete
+this first registration before giving other people access to the instance.
+
+## Services and network
+
+| Service              | Responsibility                                   | Reachability                            |
+| -------------------- | ------------------------------------------------ | --------------------------------------- |
+| `playstash-frontend` | Web interface, static files and proxy to the API | Host port 8080                          |
+| `playstash-backend`  | API, authentication, games and WebSockets        | Compose network only, port 8080         |
+| `db`                 | PostgreSQL 16 database                           | Compose network only, port 5432         |
+| `playstash-init`     | Generate the database password once              | Exits successfully after initialization |
+
+The frontend and backend run in distinct containers from distinct images. The
+backend contains no frontend ZIP or web application and returns 404 at `/`.
+The frontend contains static files and Nginx, with no backend runtime, database
+password or user-data mounts. It runs as UID/GID 101 with a read-only filesystem
+and a temporary `/tmp` mount. The initializer uses the backend image only to
+create the private password file; it is not a fourth permanent server.
+
+The frontend forwards `/api/` and `/socket.io/` to the backend and serves the SPA
+for browser routes. Browser requests use the same public address. Authentication,
+WebSocket upgrades, streaming uploads and ranged downloads pass through this
+proxy. PostgreSQL and the backend need no externally published ports.
+
+All three image families live in the existing public GHCR package
+`ghcr.io/playstash/playstash-backend`, with distinct tags:
+
+| Image                   | Stable       | Development      | Pinned release example |
+| ----------------------- | ------------ | ---------------- | ---------------------- |
+| Backend and initializer | `latest`     | `dev`            | `v17.1.4`              |
+| Frontend                | `frontend`   | `frontend-dev`   | `frontend-v17.1.4`     |
+| PostgreSQL              | `postgres16` | `postgres16-dev` | `postgres16-v17.1.4`   |
+
+The frontend runtime definition and web build come from a pinned release of the
+separate frontend repository. Its source commit, checksums and licenses are
+verified before building and preserved in `/opt/playstash/frontend/` in the
+frontend image. A frontend repository push does not alter an already published
+server release. GitHub tests the complete deployment and scans all three runtime
+images on both architectures before publishing a stable server release. Source
+repositories remain private; public image visibility allows anonymous downloads.
+
+## Reverse proxy
+
+Point your HTTPS reverse proxy at `http://SERVER-IP:8080`, the frontend service.
+Use a dedicated hostname with `/` as its root. Forward all paths, enable WebSocket
+upgrades and allow the desired upload size (game archives can be large). The
+frontend routes API and WebSocket traffic internally, so one public proxy target
+covers the whole installation.
+
+If the outer proxy terminates HTTPS, it must set `Host`, `X-Forwarded-Proto` and
+`X-Forwarded-For` correctly. Set `PLAYSTASH_TRUSTED_PROXY_CIDRS` to the explicit
+IP or CIDR of the outer proxy as seen by the frontend container, for example:
+
+```sh
+PLAYSTASH_TRUSTED_PROXY_CIDRS=192.168.1.10/32 docker compose up -d
+```
+
+For a proxy running on the Docker host, the observed peer can be a Docker bridge
+gateway rather than its public address; use that specific address. Keep the same
+setting on subsequent starts, or put it in a local `.env` file. Leave it empty for
+direct HTTP access. Only explicitly trusted peers can supply the client IP and
+HTTPS protocol. Restrict access to port 8080 to the proxy when exposing a public
+instance; do not trust `0.0.0.0/0` or `::/0`.
+
+Use `PLAYSTASH_PORT=8090 docker compose up -d` if host port 8080 is already used.
+To disable Basic self-registration after creating your administrator, add
+`SERVER_REGISTRATION_DISABLED: "true"` under `playstash-backend.environment` and
+run `docker compose up -d` again. SSO account provisioning is configured separately.
 
 ## Data and games
 
-All writable data lives beside the Compose file:
+All persistent data lives beside the Compose file:
 
-| Directory         | Contents                                                           |
-| ----------------- | ------------------------------------------------------------------ |
-| `games/`          | Game archives and ordinary game folders                            |
-| `data/config/`    | Configuration, cached web interface and private authentication key |
-| `data/postgres/`  | PostgreSQL database                                                |
-| `data/db/`        | Database backups                                                   |
-| `data/secrets/`   | Private, automatically generated PostgreSQL password               |
-| `data/media/`     | Covers, screenshots and other media                                |
-| `data/savefiles/` | Uploaded game saves                                                |
-| `data/plugins/`   | Server plugins                                                     |
-| `data/logs/`      | Server logs                                                        |
+| Directory         | Contents                                     |
+| ----------------- | -------------------------------------------- |
+| `games/`          | Game archives and ordinary game folders      |
+| `data/config/`    | Configuration and private authentication key |
+| `data/postgres/`  | PostgreSQL database                          |
+| `data/db/`        | Database backups                             |
+| `data/secrets/`   | Automatically generated PostgreSQL password  |
+| `data/media/`     | Covers, screenshots and other media          |
+| `data/savefiles/` | Uploaded game saves                          |
+| `data/plugins/`   | Backend plugins                              |
+| `data/logs/`      | Backend logs                                 |
 
-Add games through the clients or place them in `games/` using the container's
-service account (UID/GID 1000 by default). Container startup creates and assigns
-these folders automatically. For an existing directory with another owner, run
-`PUID=1001 PGID=1001 docker compose up -d` with the intended account IDs, applying
-them to both the initializer and backend. Keep the same IDs on later starts.
-Subdirectories and files must be ordinary files rather than filesystem links.
+Upload games through the clients or place them in `games/` using the backend's
+service account (UID/GID 1000 by default). Startup prepares these directories
+and their permissions. For another owner use
+`PUID=1001 PGID=1001 docker compose up -d` and keep those IDs on later starts.
+Mounted data must use ordinary directories and files rather than filesystem
+links. Frontend replacement does not change these directories.
 
-For a consistent backup, run `docker compose stop`, back up both `data/` and
-`games/`, then run `docker compose start`. A complete restoration includes
-`data/config/auth-seed`; preserving that private key keeps existing sessions
-valid after a restart. Keep backup access restricted to trusted administrators.
+For a consistent backup, run `docker compose stop`, back up `data/` and `games/`,
+then run `docker compose start`. Preserve `data/config/auth-seed`,
+`data/secrets/postgres-password` and `data/postgres/` together. PostgreSQL 16
+backups use matching version 16 tools. A failed restore reports an error and
+recovers the original database; if recovery itself fails, its private snapshot
+remains in `data/db/playstash-restore-*/` for manual recovery. The password is
+randomly generated once and never logged. Later starts reuse both private keys;
+invalid or unsafe key files stop startup. Explicit `AUTH_SEED`, `AUTH_SEED_FILE`
+or the corresponding YAML setting takes precedence over automatic persistence.
+
+These Compose files use PostgreSQL for a fresh installation. They do not convert
+an existing database. `docker-compose.postgres.yml` is an identical named
+alternative to `docker-compose.yml`.
 
 ## Status, updates and stopping
 
@@ -60,74 +126,21 @@ docker compose ps
 docker compose logs --tail=100
 ```
 
-The image's health check reports when the API is ready. The initial startup may
-take a short time while PostgreSQL and the empty database are prepared. The
-`playstash-init` service generates the database password once and exits with
-status 0; that completed service is expected. The database becomes healthy before
-the server starts. PostgreSQL is reachable only inside the Compose network.
+`playstash-init` finishes with status 0. PostgreSQL becomes healthy before the
+backend starts, and the frontend starts after the API is healthy. The database,
+backend and frontend each have health checks. The initial startup can take a
+short time while the empty database is prepared.
 
-The standard file follows stable `main` releases and checks the registry on every
-`up`. Apply an available update with the same command:
+The standard Compose file follows stable releases and checks for updates on each
+start. Apply an available update from the same directory with:
 
 ```sh
 docker compose up -d
 ```
 
-`docker compose down` removes the containers and network while keeping the host
-data directories. Start again with `docker compose up -d`. Do not delete `data/`
-or `games/` when updating. To keep a specific release, change the image tag from
-`latest` to a published version such as `v17.1.3` for both the initializer and
-backend. Pin the database image to `postgres16-v17.1.3` at the same time.
-
-Use `PLAYSTASH_PORT=8090 docker compose up -d` when host port 8080 is already in
-use. For access over the internet, serve the instance through your existing HTTPS
-reverse proxy. The bundled frontend and API share the same server address.
-
-## PostgreSQL and private keys
-
-`docker-compose.postgres.yml` is an identical, explicitly named alternative to
-`docker-compose.yml`. Both install PostgreSQL without a password placeholder or
-an environment file. The initialization service generates a unique 32-byte random
-password in `data/secrets/postgres-password`. The backend and PostgreSQL read that
-same file through read-only mounts. Later starts reuse it rather than changing
-the database password. It is never printed in the initialization log.
-
-Back up and restore `data/secrets/` together with `data/postgres/`; a database and
-its password belong to the same installation. Keep the private signing key in
-`data/config/auth-seed` with the same backup. Invalid or unsafe key files stop
-startup rather than silently generating replacement keys.
-
-The database image `ghcr.io/playstash/playstash-backend:postgres16` builds on the
-official PostgreSQL 16 Alpine image with updated system packages and an Alpine
-privilege-switch helper. The official PostgreSQL initialization remains intact.
-GitHub publishes both server and database images for AMD64 and ARM64 and scans
-their actual runtime contents for known vulnerabilities before release.
-
-Existing PostgreSQL installations should keep their current connection settings,
-credentials and data directories. These Compose files are for a fresh
-installation and do not move or convert an existing database.
-
-## Image contents and custom configuration
-
-Each server image ships a verified, pinned frontend release under
-`/opt/playstash/frontend/`; its version, source commit, ZIP checksum and licenses
-are recorded there. The same bundled frontend is available without any GitHub
-request at startup. A new frontend release is included in a server release by
-updating its pinned bundle and provenance; a frontend repository push alone does
-not change an already published server image.
-
-`WEB_UI_LOCAL_BUNDLE` can override the bundled ZIP for a custom frontend.
-`WEB_UI_ENABLED=false` runs only the API. The default container enables
-`AUTH_SEED_PERSIST=true`, generating and reusing the private key in `/config`.
-An explicit `AUTH_SEED`, `AUTH_SEED_FILE` or corresponding YAML setting takes
-precedence. Standalone Node installations retain the existing random-per-start
-behavior unless persistence is enabled.
-
-To fetch a different private GitHub frontend release instead of using the bundled
-one, set `WEB_UI_LOCAL_BUNDLE: ""`, then provide `WEB_UI_VERSION` and a read-only
-`WEB_UI_GITHUB_TOKEN` or `WEB_UI_GITHUB_TOKEN_FILE`. The default bundle takes
-precedence over GitHub version selection and corresponding YAML settings.
-
-Container image visibility is independent of the private source repository. The
-published server package must remain public so new servers can pull it without
-credentials; GitHub Actions verifies anonymous access when publishing releases.
+`docker compose down` removes containers and the network, retaining host data.
+Start again with `docker compose up -d`. Keep the same installation directory and
+do not delete `data/` or `games/`. To pin a release, change all image tags according
+to the table above, including the initializer. Backend and frontend can be
+recreated independently without invalidating existing users or authentication
+keys. API documentation is available at `/api/docs`.

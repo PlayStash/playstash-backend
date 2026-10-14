@@ -2,7 +2,7 @@
 
 For a fresh server installation, copy `docker-compose.yml` and run
 `docker compose up -d`; see [the server guide](docs/DOCKER.md). The default Compose
-file loads a prebuilt image with the web interface, automatically creates a
+file loads separate prebuilt frontend and backend images, automatically creates a
 PostgreSQL database with a unique generated password, and persists all writable data beside the Compose file. The
 steps below are for local source development.
 
@@ -10,23 +10,15 @@ To generate the frontend API specification from this backend without starting a 
 
 Run `pnpm check:fresh-schema sqlite` to verify all migrations against an empty, in-memory SQLite database. To check PostgreSQL, set `PLAYSTASH_TEST_DATABASE_URL` to an empty test database and run `pnpm check:fresh-schema postgres`.
 
-## Web interface and private repositories
+## Separate frontend and private repositories
 
-The published Docker image already contains a verified `playstash-frontend.zip`
-release bundle and serves it without a GitHub download or token. For custom or
-standalone installations, mount a different bundle and set
-`WEB_UI_LOCAL_BUNDLE=/path/to/playstash-frontend.zip`. Its ZIP must contain
-`dist/index.html`; changes to the ZIP are detected by its content hash on server
-restart. This option takes precedence over GitHub release lookup and works
-without credentials or a network connection.
-
-Alternatively, set `WEB_UI_LOCAL_BUNDLE: ""` to enable GitHub release lookup in a
-container. Private frontend releases require `WEB_UI_GITHUB_TOKEN` or
-`WEB_UI_GITHUB_TOKEN_FILE`, with a fine-grained token granting **Contents: read** on
-`PlayStash/playstash-frontend`. The token remains server-side, is redacted from the
-configuration API, and is omitted from asset-download redirects. Public
-repositories need no token. `WEB_UI_VERSION=v17.2.1` pins a release in this mode.
-Set `WEB_UI_ENABLED=false` to run only the API.
+The backend serves only the API. Run the web frontend as its own service; the
+standard Compose file starts both services with PostgreSQL. The frontend proxies
+API and WebSocket requests to the backend. It uses static assets from a verified,
+pinned frontend release; its image is built from the frontend repository's
+Dockerfile.runtime, nginx.runtime.conf and start-runtime.sh. No frontend GitHub
+token or ZIP is needed at server startup. See [the server guide](docs/DOCKER.md)
+for network, HTTPS proxy and image settings.
 
 The server container package supports anonymous pulls; source repositories and
 installer releases remain private. Those GitHub releases require an account with

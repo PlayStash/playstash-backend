@@ -22,8 +22,9 @@ assert.ok(
 );
 const platform = process.argv[3];
 const databaseImage = process.argv[4];
+const frontendImage = process.argv[5];
 assert.ok(
-  process.argv.length <= 5 &&
+  process.argv.length <= 6 &&
     (!platform || ["linux/amd64", "linux/arm64"].includes(platform)),
   "The optional platform must be linux/amd64 or linux/arm64.",
 );
@@ -32,8 +33,12 @@ assert.ok(
   "The optional database image must be a Docker image reference.",
 );
 assert.ok(
-  process.env.GITHUB_ACTIONS !== "true" || databaseImage,
-  "CI must provide its actual built database image as the fourth argument.",
+  !frontendImage || /^[a-z\d][a-z\d._/:@-]*$/i.test(frontendImage),
+  "The optional frontend image must be a Docker image reference.",
+);
+assert.ok(
+  process.env.GITHUB_ACTIONS !== "true" || (databaseImage && frontendImage),
+  "CI must provide the actual database and frontend images as the fourth and fifth arguments.",
 );
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,7 +46,8 @@ const sourceCompose = join(repository, "docker-compose.yml");
 const serviceName = "playstash-backend";
 const initializerName = "playstash-init";
 const databaseName = "db";
-const serviceNames = [serviceName, initializerName, databaseName];
+const frontendName = "playstash-frontend";
+const serviceNames = [serviceName, initializerName, databaseName, frontendName];
 const targets = [
   "/config",
   "/files",
@@ -273,7 +279,7 @@ function baseUrl() {
   const address = compose(
     "Resolve loopback-only test port",
     "port",
-    serviceName,
+    frontendName,
     "8080",
   );
   const match = /^127\.0\.0\.1:(\d+)$/.exec(address);
@@ -354,7 +360,7 @@ async function waitForServer(base, container) {
     );
     assert.ok(
       !["exited", "dead"].includes(state),
-      "Backend exited before becoming ready.",
+      "Frontend exited before its backend proxy became ready.",
     );
     try {
       const response = await request(base, "/api/status", {}, 1024 * 1024);
@@ -364,7 +370,9 @@ async function waitForServer(base, container) {
     }
     await delay(1000);
   }
-  throw new Error("Compose backend did not become ready within five minutes.");
+  throw new Error(
+    "Compose frontend/API proxy did not become ready within five minutes.",
+  );
 }
 
 function checkPostgresServices() {
@@ -420,14 +428,26 @@ function checkPostgresServices() {
 
 async function checkWeb(base, expected) {
   const page = await request(base, "/", {}, 1024 * 1024);
-  assert.equal(page.status, 200, "Built-in web UI must return HTTP 200.");
+  assert.equal(page.status, 200, "The separate frontend must return HTTP 200.");
   assert.match(
     page.headers.get("content-type") || "",
     /text\/html/i,
     "Root must serve HTML.",
   );
   const html = page.body.toString("utf8");
-  assert.match(html, /PlayStash/i, "Built-in page must be the PlayStash UI.");
+  assert.match(html, /PlayStash/i, "The frontend must serve the PlayStash UI.");
+  const deepLink = await request(
+    base,
+    "/compose-check/library",
+    {},
+    1024 * 1024,
+  );
+  assert.equal(deepLink.status, 200, "SPA deep links must serve the frontend.");
+  assert.equal(
+    deepLink.body.toString("utf8"),
+    html,
+    "SPA deep links must return the same application shell.",
+  );
   const assets = [];
   for (const tag of html.matchAll(/<(script|link)\b[^>]*>/gi)) {
     const attributes = Object.fromEntries(
@@ -453,7 +473,7 @@ async function checkWeb(base, expected) {
         assert.equal(
           url.origin,
           base,
-          "Application JavaScript must be served by this backend.",
+          "Application JavaScript must be served by this frontend.",
         );
       // Optional external font styles are not part of the bundled asset probe.
       if (url.origin === base)
@@ -491,7 +511,7 @@ async function checkWeb(base, expected) {
     assert.deepEqual(
       result,
       expected,
-      "The bundled UI and assets must survive recreation.",
+      "The frontend application and assets must survive recreation.",
     );
   return result;
 }
@@ -523,15 +543,12 @@ function inspectPersistentState(container, createMarkers = false) {
     assert.equal(password.uid, process.getuid());
     const passwordBytes = fs.readFileSync(passwordPath);
     assert.ok(/^[a-f0-9]{64}\\n?$/.test(passwordBytes.toString('utf8')));
-    const indexPath = '/config/frontend/dist/index.html';
-    const index = fs.statSync(indexPath);
-    const version = fs.readFileSync('/config/frontend/.version','utf8').trim();
-    assert.ok(/^local-[a-f0-9]{64}$/.test(version), 'Built-in frontend cache was not prepared.');
-    process.stdout.write(JSON.stringify({seed:{hash:crypto.createHash('sha256').update(seedBytes).digest('hex'),uid:seed.uid,mode:seed.mode & 0o777,inode:seed.ino,device:seed.dev,mtime:seed.mtimeMs},databasePassword:{hash:crypto.createHash('sha256').update(passwordBytes).digest('hex'),uid:password.uid,mode:password.mode & 0o777,inode:password.ino,device:password.dev,mtime:password.mtimeMs},frontend:{version,hash:crypto.createHash('sha256').update(fs.readFileSync(indexPath)).digest('hex'),mtime:index.mtimeMs}}));
+    assert.ok(!fs.existsSync('/config/frontend'), 'API-only backend must not create a frontend cache.');
+    process.stdout.write(JSON.stringify({seed:{hash:crypto.createHash('sha256').update(seedBytes).digest('hex'),uid:seed.uid,mode:seed.mode & 0o777,inode:seed.ino,device:seed.dev,mtime:seed.mtimeMs},databasePassword:{hash:crypto.createHash('sha256').update(passwordBytes).digest('hex'),uid:password.uid,mode:password.mode & 0o777,inode:password.ino,device:password.dev,mtime:password.mtimeMs}}));
   `;
   return JSON.parse(
     docker(
-      "Verify all persistent mounts, private seed and bundled cache",
+      "Verify all persistent mounts and private signing/database keys",
       "exec",
       "--user",
       "1000:1000",
@@ -553,11 +570,6 @@ function comparePersistentState(before, after) {
     assert.ok(
       before.databasePassword[field] === after.databasePassword[field],
       "Automatically generated PostgreSQL password was replaced or changed.",
-    );
-  for (const field of ["version", "hash", "mtime"])
-    assert.ok(
-      before.frontend[field] === after.frontend[field],
-      "Bundled frontend cache did not persist.",
     );
 }
 
@@ -600,18 +612,189 @@ async function checkIdentity(base, token, first, second) {
     ),
     "The second account must remain an inactive ordinary user.",
   );
+  return user;
+}
+
+function checkSeparatedContainers(backend, frontend) {
+  const backendBindings = JSON.parse(
+    docker(
+      "Verify backend has no published host ports",
+      "inspect",
+      "--format",
+      "{{json .HostConfig.PortBindings}}",
+      backend,
+    ),
+  );
+  assert.ok(
+    !Object.values(backendBindings || {}).some((bindings) => bindings?.length),
+    "The API backend must not publish a host port.",
+  );
+  const frontendHost = JSON.parse(
+    docker(
+      "Inspect separate frontend isolation",
+      "inspect",
+      "--format",
+      "{{json .HostConfig}}",
+      frontend,
+    ),
+  );
+  assert.equal(
+    frontendHost.ReadonlyRootfs,
+    true,
+    "The frontend root filesystem must be read-only.",
+  );
+  assert.ok(
+    Object.hasOwn(frontendHost.Tmpfs || {}, "/tmp"),
+    "Nginx writable state must use ephemeral tmpfs.",
+  );
+  const frontendMounts = JSON.parse(
+    docker(
+      "Verify frontend cannot access backend storage",
+      "inspect",
+      "--format",
+      "{{json .Mounts}}",
+      frontend,
+    ),
+  );
+  assert.ok(
+    frontendMounts.every(
+      (mount) => mount.Type === "tmpfs" && mount.Destination === "/tmp",
+    ),
+    "The frontend must not mount backend files, PostgreSQL data or secrets.",
+  );
+  assert.notEqual(
+    docker("Verify frontend runs without root", "exec", frontend, "id", "-u"),
+    "0",
+    "Nginx must run as an unprivileged user.",
+  );
+  docker(
+    "Verify frontend contains only its web runtime",
+    "exec",
+    frontend,
+    "sh",
+    "-c",
+    "! command -v node >/dev/null 2>&1 && test ! -e /app/dist && test ! -e /app/node_modules && test ! -e /run/playstash-secrets && test ! -e /opt/playstash/init-postgres.mjs && test -f /usr/share/nginx/html/index.html",
+  );
+  const direct = JSON.parse(
+    docker(
+      "Verify backend is API-only",
+      "exec",
+      "--user",
+      "1000:1000",
+      backend,
+      "node",
+      "--input-type=module",
+      "--eval",
+      `
+      import assert from 'node:assert/strict';
+      import { existsSync } from 'node:fs';
+      for (const path of ['/', '/assets/compose-check.js']) {
+        const response = await fetch('http://127.0.0.1:8080' + path, { redirect:'error', signal:AbortSignal.timeout(10000) });
+        assert.equal(response.status, 404, 'Backend must not serve a frontend page or assets.');
+        await response.body?.cancel();
+      }
+      const status = await fetch('http://127.0.0.1:8080/api/status', { redirect:'error', signal:AbortSignal.timeout(10000) });
+      assert.equal(status.status, 200);
+      await status.body?.cancel();
+      assert.ok(!existsSync('/opt/playstash/frontend') && !existsSync('/config/frontend'), 'Backend must not contain or cache a frontend bundle.');
+      process.stdout.write(JSON.stringify({api:true,frontend:false}));
+    `,
+    ),
+  );
+  assert.deepEqual(direct, { api: true, frontend: false });
+}
+
+async function checkSocketIo(base, user) {
+  assert.ok(
+    typeof user.api_key === "string" && /^[a-f\d]{64}$/.test(user.api_key),
+    "The authenticated user must supply its own API key for the WebSocket probe.",
+  );
+  const endpoint = new URL("/socket.io/?EIO=4&transport=websocket", base);
+  endpoint.protocol = "ws:";
+  await new Promise((resolve, reject) => {
+    const socket = new WebSocket(endpoint);
+    let settled = false;
+    const complete = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        socket.close();
+      } catch {
+        /* An interrupted handshake may already be closed. */
+      }
+      if (error) reject(error);
+      else resolve();
+    };
+    const timeout = setTimeout(
+      () =>
+        complete(
+          new Error(
+            `${lifecycle}: authenticated Socket.IO proxy roundtrip timed out.`,
+          ),
+        ),
+      20000,
+    );
+    socket.addEventListener("error", () =>
+      complete(
+        new Error(
+          `${lifecycle}: WebSocket upgrade through the frontend failed.`,
+        ),
+      ),
+    );
+    socket.addEventListener("close", () => {
+      if (!settled)
+        complete(
+          new Error(
+            `${lifecycle}: WebSocket closed before the authenticated response.`,
+          ),
+        );
+    });
+    socket.addEventListener("message", ({ data }) => {
+      try {
+        const packet = String(data);
+        assert.ok(
+          Buffer.byteLength(packet) <= 1024 * 1024,
+          "Socket.IO probe response is oversized.",
+        );
+        if (packet.startsWith("0"))
+          socket.send(`40${JSON.stringify({ api_key: user.api_key })}`);
+        else if (packet.startsWith("2")) socket.send(`3${packet.slice(1)}`);
+        else if (packet.startsWith("40"))
+          socket.send(`42${JSON.stringify(["get-activities"])}`);
+        else if (packet.startsWith("44"))
+          complete(new Error(`${lifecycle}: Socket.IO authentication failed.`));
+        else if (packet.startsWith("42")) {
+          const message = JSON.parse(packet.slice(2));
+          if (message[0] === "activities") {
+            assert.ok(
+              Array.isArray(message[1]),
+              "The real activities response must be an array.",
+            );
+            complete();
+          } else if (message[0] === "exception")
+            complete(
+              new Error(
+                `${lifecycle}: Socket.IO rejected the authenticated activity request.`,
+              ),
+            );
+        }
+      } catch {
+        complete(
+          new Error(
+            `${lifecycle}: Socket.IO proxy returned an invalid response.`,
+          ),
+        );
+      }
+    });
+  });
 }
 
 try {
   const rawCompose = readFileSync(sourceCompose, "utf8");
-  const optionalSettings = new Set([
-    "${PUID:-1000}",
-    "${PGID:-1000}",
-    "${PLAYSTASH_PORT:-8080}",
-  ]);
   assert.ok(
     [...rawCompose.matchAll(/\$\{[^}]+\}/g)].every(([setting]) =>
-      optionalSettings.has(setting),
+      /^\$\{[A-Z][A-Z\d_]*:-[^}]*\}$/.test(setting),
     ),
     "Default Compose must not require environment values without working defaults.",
   );
@@ -633,11 +816,12 @@ try {
   assert.deepEqual(
     Object.keys(configuration.services || {}).sort(),
     [...serviceNames].sort(),
-    "Default deployment must contain only initializer, PostgreSQL and backend services.",
+    "Default deployment must contain separate initializer, PostgreSQL, backend and frontend services.",
   );
   const service = configuration.services[serviceName];
   const initializer = configuration.services[initializerName];
   const database = configuration.services[databaseName];
+  const frontend = configuration.services[frontendName];
   for (const entry of Object.values(configuration.services))
     assert.ok(
       !("build" in entry) && !entry.env_file,
@@ -666,52 +850,58 @@ try {
     ["node", "/opt/playstash/init-postgres.mjs"],
     "Database credentials must be initialized automatically by the packaged tool.",
   );
-  assert.deepEqual(Object.keys(initializer.environment || {}).sort(), [
-    "PGID",
-    "PUID",
-  ]);
   assert.equal(initializer.restart, "no");
-  assert.deepEqual(
-    Object.keys(service.environment || {}).sort(),
-    [
-      "AUTH_SEED_PERSIST",
-      "DB_DATABASE",
-      "DB_HOST",
-      "DB_PASSWORD_FILE",
-      "DB_SYSTEM",
-      "DB_USERNAME",
-      "PGID",
-      "PUID",
-    ],
-    "Default startup must not require manual seeds, administrator passwords or GitHub credentials.",
-  );
   assert.equal(service.environment.DB_SYSTEM, "POSTGRESQL");
   assert.equal(service.environment.DB_HOST, databaseName);
   assert.equal(service.environment.DB_USERNAME, "playstash");
   assert.equal(service.environment.DB_DATABASE, "playstash");
   assert.equal(service.environment.DB_PASSWORD_FILE, passwordFile);
   assert.equal(String(service.environment.AUTH_SEED_PERSIST), "true");
+  assert.ok(
+    service.environment.WEB_UI_ENABLED === undefined ||
+      String(service.environment.WEB_UI_ENABLED) === "false",
+    "The backend must not enable its own web interface.",
+  );
   assert.equal(
     database.image,
     "ghcr.io/playstash/playstash-backend:postgres16",
     "Default deployment must use the published patched PostgreSQL 16 image.",
   );
   assert.equal(database.pull_policy, "always");
-  assert.deepEqual(Object.keys(database.environment || {}).sort(), [
-    "POSTGRES_DB",
-    "POSTGRES_PASSWORD_FILE",
-    "POSTGRES_USER",
-  ]);
   assert.equal(database.environment.POSTGRES_USER, "playstash");
   assert.equal(database.environment.POSTGRES_DB, "playstash");
   assert.equal(database.environment.POSTGRES_PASSWORD_FILE, passwordFile);
   assert.ok(
-    !database.ports?.length && !initializer.ports?.length,
-    "Database and initializer must not publish host ports.",
+    !database.ports?.length &&
+      !initializer.ports?.length &&
+      !service.ports?.length,
+    "Database, initializer and backend must not publish host ports.",
   );
   assert.ok(
-    service.ports?.length === 1 && service.ports[0].target === 8080,
-    "Only the backend HTTP port may be published.",
+    service.expose?.some((port) => String(port) === "8080"),
+    "The backend API must be exposed only to the Compose network.",
+  );
+  assert.ok(
+    frontend.ports?.length === 1 && frontend.ports[0].target === 8080,
+    "Only the frontend HTTP port may be published.",
+  );
+  assert.equal(
+    frontend.image,
+    "ghcr.io/playstash/playstash-backend:frontend",
+    "Default startup must use the separate published frontend image.",
+  );
+  assert.equal(
+    frontend.read_only,
+    true,
+    "The frontend must have a read-only root filesystem.",
+  );
+  assert.ok(
+    frontend.tmpfs?.some((mount) => String(mount).split(":")[0] === "/tmp"),
+    "The frontend must use tmpfs for temporary Nginx state.",
+  );
+  assert.ok(
+    !frontend.volumes?.length,
+    "The frontend must not have access to backend storage or database secrets.",
   );
   assert.equal(
     database.depends_on?.[initializerName]?.condition,
@@ -794,14 +984,19 @@ try {
     delete entry.container_name;
     if (platform) entry.platform = platform;
     entry.labels = { ...entry.labels, [ownershipLabel]: project };
-    if (name !== databaseName) {
+    if (name === frontendName) {
+      if (frontendImage) {
+        entry.image = frontendImage;
+        entry.pull_policy = "never";
+      }
+    } else if (name !== databaseName) {
       entry.image = image;
       entry.pull_policy = "never";
     } else if (databaseImage) {
       entry.image = databaseImage;
       entry.pull_policy = "never";
     }
-    for (const volume of entry.volumes) {
+    for (const volume of entry.volumes || []) {
       const key = mountKeys.get(volume.target);
       assert.ok(key, "Unexpected persistent mount target.");
       if (useNamedVolumes) {
@@ -832,7 +1027,7 @@ try {
       }
     }
   }
-  service.ports = [
+  frontend.ports = [
     { target: 8080, published: "0", host_ip: "127.0.0.1", protocol: "tcp" },
   ];
   writeFileSync(testCompose, JSON.stringify(configuration, null, 2), {
@@ -847,8 +1042,10 @@ try {
     "--no-build",
   );
   let container = ownContainer();
+  let frontendContainer = ownContainer(frontendName);
   let base = baseUrl();
-  await waitForServer(base, container);
+  await waitForServer(base, frontendContainer);
+  checkSeparatedContainers(container, frontendContainer);
   const web = await checkWeb(base);
   const suffix = randomBytes(4).toString("hex");
   const password = randomBytes(24).toString("base64url");
@@ -900,18 +1097,63 @@ try {
       typeof tokens.refresh_token === "string",
     "Basic login must return the real TokenPairDto fields.",
   );
-  await checkIdentity(base, tokens.access_token, first, second);
+  await checkSocketIo(
+    base,
+    await checkIdentity(base, tokens.access_token, first, second),
+  );
   checkPostgresServices();
   const initialState = inspectPersistentState(container, true);
+  const databaseContainer = ownContainer(databaseName);
 
-  lifecycle = "force recreation";
+  lifecycle = "independent frontend recreation";
   assertProjectOwnership();
   compose(
-    "Recreate only this owned PostgreSQL deployment",
+    "Recreate only the owned frontend",
     "up",
     "--detach",
     "--no-build",
+    "--no-deps",
     "--force-recreate",
+    frontendName,
+  );
+  const frontendReplacement = ownContainer(frontendName);
+  assert.notEqual(
+    frontendReplacement,
+    frontendContainer,
+    "Frontend recreation must replace only the frontend container.",
+  );
+  assert.equal(
+    ownContainer(),
+    container,
+    "Frontend recreation must leave the backend running independently.",
+  );
+  assert.equal(
+    ownContainer(databaseName),
+    databaseContainer,
+    "Frontend recreation must leave PostgreSQL running.",
+  );
+  frontendContainer = frontendReplacement;
+  base = baseUrl();
+  await waitForServer(base, frontendContainer);
+  await checkSocketIo(
+    base,
+    await checkIdentity(base, tokens.access_token, first, second),
+  );
+  checkPostgresServices();
+  checkSeparatedContainers(container, frontendContainer);
+  await checkWeb(base, web);
+  comparePersistentState(initialState, inspectPersistentState(container));
+
+  lifecycle = "independent backend recreation";
+  assertProjectOwnership();
+  compose(
+    "Recreate only the owned API backend",
+    "up",
+    "--detach",
+    "--no-build",
+    "--no-deps",
+    "--force-recreate",
+    serviceName,
   );
   const replacement = ownContainer();
   assert.notEqual(
@@ -920,10 +1162,24 @@ try {
     "Force recreation must replace the container.",
   );
   container = replacement;
+  assert.equal(
+    ownContainer(frontendName),
+    frontendContainer,
+    "Backend recreation must leave the frontend running independently.",
+  );
+  assert.equal(
+    ownContainer(databaseName),
+    databaseContainer,
+    "Backend recreation must leave PostgreSQL running.",
+  );
   base = baseUrl();
-  await waitForServer(base, container);
-  await checkIdentity(base, tokens.access_token, first, second);
+  await waitForServer(base, frontendContainer);
+  await checkSocketIo(
+    base,
+    await checkIdentity(base, tokens.access_token, first, second),
+  );
   checkPostgresServices();
+  checkSeparatedContainers(container, frontendContainer);
   await checkWeb(base, web);
   comparePersistentState(initialState, inspectPersistentState(container));
 
@@ -943,10 +1199,15 @@ try {
     "--no-build",
   );
   container = ownContainer();
+  frontendContainer = ownContainer(frontendName);
   base = baseUrl();
-  await waitForServer(base, container);
-  await checkIdentity(base, tokens.access_token, first, second);
+  await waitForServer(base, frontendContainer);
+  await checkSocketIo(
+    base,
+    await checkIdentity(base, tokens.access_token, first, second),
+  );
   checkPostgresServices();
+  checkSeparatedContainers(container, frontendContainer);
   await checkWeb(base, web);
   comparePersistentState(initialState, inspectPersistentState(container));
 } catch (error) {
@@ -1019,6 +1280,6 @@ if (failure) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Compose deployment check passed: automatic PostgreSQL initializer and healthy database, prebuilt backend, built-in HTML/JS/CSS, initial admin and inactive second user stored in PostgreSQL, seven persistent data mounts plus private stable database password and authentication seed, valid old bearer and cached UI after recreation and down/up; isolated ${useNamedVolumes ? "Unix-volume" : "bind-directory"} cleanup completed.`,
+    `Compose deployment check passed: separate read-only unprivileged Nginx frontend and API-only backend, automatic PostgreSQL initializer and healthy database, SPA/HTML/JS/CSS plus authenticated HTTP and Socket.IO through the frontend proxy, initial admin and inactive second user stored in PostgreSQL, seven persistent data mounts and stable private signing/database keys, original bearer and data retained after independent frontend recreation, independent backend recreation and down/up; isolated ${useNamedVolumes ? "Unix-volume" : "bind-directory"} cleanup completed.`,
   );
 }

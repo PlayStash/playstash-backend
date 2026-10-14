@@ -7,7 +7,6 @@ import { DataSource } from "typeorm";
 
 // Export route/model metadata without connecting to a database or starting jobs.
 process.env.DB_SYSTEM = "POSTGRESQL";
-process.env.WEB_UI_ENABLED = "false";
 const { AppModule } = await import("../dist/src/app.module.js");
 const { createPlaystashApiDocument } = await import("../dist/src/openapi.js");
 const inertDatabase = new DataSource({ type: "postgres" });

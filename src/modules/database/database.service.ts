@@ -7,8 +7,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import fsExtra from "fs-extra";
-import { exec } from "node:child_process";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -19,11 +19,15 @@ const { copyFile, createReadStream, pathExists, stat } = fsExtra;
 
 import type { AppConfiguration } from "../../configuration.js";
 import { InjectPlaystashConfig } from "../../decorators/inject-playstash-config.decorator.js";
+import {
+  selectPostgresClients,
+  type PostgresClients,
+} from "./postgres-client.js";
 
 @Injectable()
 export class DatabaseService {
   private readonly logger = new Logger(this.constructor.name);
-  private readonly execPromise = promisify(exec);
+  private readonly execFilePromise = promisify(execFile);
 
   constructor(
     private readonly dataSource: DataSource,
@@ -110,15 +114,29 @@ export class DatabaseService {
     return this.dataSource.runMigrations();
   }
 
-  async backupPostgresql(backupFilePath: string): Promise<StreamableFile> {
+  async backupPostgresql(
+    backupFilePath: string,
+    clients?: PostgresClients,
+  ): Promise<StreamableFile> {
     this.logger.log({
       message: "Backing up PostgreSQL Database...",
       backupFilePath,
     });
     try {
-      await this.execPromise(
-        `pg_dump -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} -f ${backupFilePath}`,
-        { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+      const selected =
+        clients ?? (await selectPostgresClients(this.dataSource));
+      await this.execFilePromise(
+        selected.dump,
+        [
+          "-F",
+          "t",
+          ...this.postgresConnectionArgs(),
+          "-d",
+          this.config.DB.DATABASE,
+          "-f",
+          backupFilePath,
+        ],
+        { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
       );
 
       return this.createStreamableFile(backupFilePath);
@@ -150,67 +168,119 @@ export class DatabaseService {
       size: file.size,
     });
     const restorePath = file.path;
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "playstash-"));
+    await mkdir(this.config.VOLUMES.SQLITEDB, {
+      recursive: true,
+      mode: 0o700,
+    });
+    const tempDir = await mkdtemp(
+      path.join(this.config.VOLUMES.SQLITEDB, "playstash-restore-"),
+    );
     const preRestorePath = path.join(tempDir, "database_pre_restore.db");
+    let clients: PostgresClients | undefined;
+    let databaseReplaced = false;
+    let preserveRecoveryBackup = false;
     try {
-      await this.backupPostgresql(preRestorePath);
+      clients = await selectPostgresClients(this.dataSource);
+      const backup = await this.backupPostgresql(preRestorePath, clients);
+      backup?.getStream().destroy();
+      await chmod(preRestorePath, 0o600);
 
       // The dump was streamed to this file; restrict its permissions as it
       // contains the complete database.
       await chmod(restorePath, 0o600);
 
-      await this.execPromise(
-        `dropdb --if-exists -f -w -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} ${this.config.DB.DATABASE}`,
-        { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+      await this.execFilePromise(
+        "dropdb",
+        [
+          "--if-exists",
+          "-f",
+          ...this.postgresConnectionArgs(),
+          "--",
+          this.config.DB.DATABASE,
+        ],
+        { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
+      );
+      databaseReplaced = true;
+
+      await this.execFilePromise(
+        "createdb",
+        [...this.postgresConnectionArgs(), "--", this.config.DB.DATABASE],
+        { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
       );
 
-      await this.execPromise(
-        `createdb -w -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} ${this.config.DB.DATABASE}`,
-        { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+      await this.execFilePromise(
+        clients.restore,
+        [
+          "-O",
+          "-F",
+          "t",
+          ...this.postgresConnectionArgs(),
+          "-d",
+          this.config.DB.DATABASE,
+          "--",
+          restorePath,
+        ],
+        { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
       );
-
-      try {
-        await this.execPromise(
-          `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} ${restorePath}`,
-          { env: { PGPASSWORD: this.config.DB.PASSWORD } },
-        );
-
-        this.logger.log("Successfully restored PostgreSQL Database.");
-      } catch (error) {
-        this.logger.warn({
-          message:
-            "Restoring your backup might have encountered an issue. Please examine the logs. If it reads 'pg_restore: warning: errors ignored on restore,' things are likely alright. It could have succeeded.",
-          error,
-        });
-      }
+      this.logger.log("Successfully restored PostgreSQL Database.");
     } catch (error) {
       this.logger.error({
         message: "Error restoring PostgreSQL database",
         error,
       });
 
-      if (await pathExists(preRestorePath)) {
+      if (
+        databaseReplaced &&
+        (!clients || !(await pathExists(preRestorePath)))
+      ) {
+        preserveRecoveryBackup = true;
+        throw new InternalServerErrorException(
+          "PostgreSQL restore failed and the recovery backup is unavailable. Restore a prior backup manually.",
+          { cause: error },
+        );
+      }
+      if (databaseReplaced && clients) {
         this.logger.log("Restoring pre-restore database.");
         try {
-          await this.execPromise(
-            `dropdb --if-exists -f -w -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} ${this.config.DB.DATABASE}`,
-            { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+          await this.execFilePromise(
+            "dropdb",
+            [
+              "--if-exists",
+              "-f",
+              ...this.postgresConnectionArgs(),
+              "--",
+              this.config.DB.DATABASE,
+            ],
+            { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
           );
 
-          await this.execPromise(
-            `createdb -w -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} ${this.config.DB.DATABASE}`,
-            { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+          await this.execFilePromise(
+            "createdb",
+            [...this.postgresConnectionArgs(), "--", this.config.DB.DATABASE],
+            { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
           );
 
-          await this.execPromise(
-            `pg_restore -O -w -F t -h ${this.config.DB.HOST} -p ${this.config.DB.PORT} -U ${this.config.DB.USERNAME} -d ${this.config.DB.DATABASE} ${preRestorePath}`,
-            { env: { PGPASSWORD: this.config.DB.PASSWORD } },
+          await this.execFilePromise(
+            clients.restore,
+            [
+              "-O",
+              "-F",
+              "t",
+              ...this.postgresConnectionArgs(),
+              "-d",
+              this.config.DB.DATABASE,
+              "--",
+              preRestorePath,
+            ],
+            { env: { ...process.env, PGPASSWORD: this.config.DB.PASSWORD } },
           );
           this.logger.log("Restored pre-restore database.");
         } catch (error) {
+          preserveRecoveryBackup = true;
           this.logger.error({
             message:
               "Errors occured restoring pre-restore PostgreSQL database. Please restore the backup manually.",
+            recoveryBackupPath: preRestorePath,
             error,
           });
           throw new InternalServerErrorException(
@@ -219,10 +289,15 @@ export class DatabaseService {
           );
         }
       }
-    } finally {
-      await rm(tempDir, { recursive: true, force: true }).catch(
-        () => undefined,
+      throw new InternalServerErrorException(
+        "PostgreSQL restore failed; the original database was retained or recovered.",
+        { cause: error },
       );
+    } finally {
+      if (!preserveRecoveryBackup)
+        await rm(tempDir, { recursive: true, force: true }).catch(
+          () => undefined,
+        );
     }
   }
 
@@ -260,6 +335,18 @@ export class DatabaseService {
         "The database password provided in the X-Database-Password Header is incorrect.",
       );
     }
+  }
+
+  private postgresConnectionArgs(): string[] {
+    return [
+      "-w",
+      "-h",
+      this.config.DB.HOST,
+      "-p",
+      String(this.config.DB.PORT),
+      "-U",
+      this.config.DB.USERNAME,
+    ];
   }
 
   private generateBackupFilepath(): string {

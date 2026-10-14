@@ -17,7 +17,8 @@ RUN apk add --no-cache tar xz \
 FROM base AS runtime
 ARG SECURITY_REFRESH=local
 RUN test -n "$SECURITY_REFRESH" \
-    && apk upgrade --no-cache && apk add --no-cache ca-certificates curl su-exec postgresql-client \
+    && apk upgrade --no-cache && apk add --no-cache ca-certificates curl su-exec postgresql18-client postgresql16-client \
+    && pg_versions set-default latest \
     && mkdir -p /config /files /media /logs /db /plugins /savefiles \
     && rm -rf /usr/local/lib/node_modules /opt/yarn* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg
@@ -34,8 +35,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build \
-    && node --test scripts/check-bundled-frontend.test.mjs scripts/init-postgres.test.mjs \
-    && node scripts/check-bundled-frontend.mjs
+    && node --test scripts/init-postgres.test.mjs
 
 FROM builder-base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -43,12 +43,10 @@ RUN pnpm install --prod --frozen-lockfile
 
 FROM runtime AS release
 ENV NODE_ENV=production \
-    WEB_UI_LOCAL_BUNDLE=/opt/playstash/frontend/playstash-frontend.zip \
     AUTH_SEED_PERSIST=true
 COPY package.json ./
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build /app/vendor/frontend /opt/playstash/frontend
 COPY scripts/init-postgres.mjs /opt/playstash/init-postgres.mjs
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chown -R node:node /app/dist /config /files /media /logs /db /plugins /savefiles \
@@ -57,7 +55,6 @@ RUN chown -R node:node /app/dist /config /files /media /logs /db /plugins /savef
     && chmod 700 /run/playstash-secrets \
     && chmod -R u=rwX,go=rX /app/dist \
     && chmod 644 /opt/playstash/init-postgres.mjs \
-    && chmod -R u=rwX,go=rX /opt/playstash/frontend \
     && chmod -R u=rwX,go= /config /files /media /logs /db /plugins /savefiles \
     && sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/entrypoint.sh \
     && rm -rf /usr/local/lib/node_modules /opt/yarn* \

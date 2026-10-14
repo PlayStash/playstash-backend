@@ -22,6 +22,7 @@ import configuration, {
   getMaxBodySizeInBytes,
 } from "./configuration.js";
 import { LoggingExceptionFilter } from "./filters/http-exception.filter.js";
+import { configureHttpServerTimeouts } from "./http-server-timeouts.js";
 import logger, { stream } from "./logging.js";
 import { LegacyRoutesMiddleware } from "./middleware/legacy-routes.middleware.js";
 import { createPlaystashApiDocument } from "./openapi.js";
@@ -129,9 +130,7 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix("api");
 
   // Provide API Specification
-  if (configuration.WEB_UI.ENABLED) {
-    SwaggerModule.setup("api/docs", app, createPlaystashApiDocument(app));
-  }
+  SwaggerModule.setup("api/docs", app, createPlaystashApiDocument(app));
 
   // Redirect /health to /status
   app.use("/api/health", (_req: Request, res: Response) => {
@@ -139,6 +138,7 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.init();
+  configureHttpServerTimeouts(app.getHttpServer());
 
   // Start HTTP server (Nest owns the http.Server here, so Socket.IO attaches to it)
   await app.listen(configuration.SERVER.PORT ?? 8080);
@@ -167,6 +167,7 @@ async function bootstrap(): Promise<void> {
       httpsOptions,
       app.getHttpAdapter().getInstance(),
     );
+    configureHttpServerTimeouts(httpsServer);
     httpsServer.listen(configuration.SERVER.HTTPS.PORT);
   }
 

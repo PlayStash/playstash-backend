@@ -1,5 +1,23 @@
 # PlayStash Backend Changelog
 
+## 17.1.4
+
+### Breaking Changes & Migration
+
+- The backend no longer serves or downloads the product web interface; its image contains the API and server services only. -> **Run the separate frontend container and direct browser access through it; keep the existing backend data volumes.**
+- The `WEB_UI_*`, `SERVER_WEB_UI_ENABLED` and `SERVER_LANDING_PAGE_ENABLED` settings and `POST /api/admin/web-ui/restart` have been removed. -> **Configure and update the frontend container independently; remove the obsolete backend settings.**
+
+### Changes
+
+- Backend startup no longer requires a frontend ZIP, frontend cache or GitHub token, including when administrator features are enabled.
+- API documentation remains available at `/api/docs` independently of frontend deployment.
+- HTTP and HTTPS allow up to one hour to receive a streamed upload instead of stopping after five minutes; incomplete request headers still time out after one minute.
+- PostgreSQL 16 backups use matching container tools; failed restores report an error and recover the original database instead of silently accepting a partial restore. A failed recovery retains its private backup in the persistent backup directory for manual recovery.
+- One Compose file starts separate frontend, backend and PostgreSQL containers with automatic initialization; only the frontend publishes host port 8080.
+- The frontend proxies API calls, WebSockets, uploads and ranged downloads and can be replaced independently while retaining users, games and private authentication keys.
+- GitHub publishes separate AMD64/ARM64 frontend, backend and database images and checks the complete deployment, known vulnerabilities and anonymous downloads before release.
+- HTTPS proxy client addresses and protocol headers are accepted only from explicitly configured trusted proxy peers.
+
 ## 17.1.3
 
 ### Breaking Changes & Migration

@@ -273,17 +273,6 @@ const configuration = {
       CA_CERT_PATH: resolveEnv("SERVER_HTTPS_CA_CERT_PATH") || undefined,
     } as const,
   } as const,
-  WEB_UI: {
-    ENABLED: parseBooleanEnvVariable(
-      resolveEnv("WEB_UI_ENABLED") ||
-        resolveEnv("SERVER_WEB_UI_ENABLED") ||
-        resolveEnv("SERVER_LANDING_PAGE_ENABLED"),
-      true,
-    ),
-    VERSION: resolveEnv("WEB_UI_VERSION") || undefined,
-    LOCAL_BUNDLE: resolveEnv("WEB_UI_LOCAL_BUNDLE") || undefined,
-    GITHUB_TOKEN: resolveEnv("WEB_UI_GITHUB_TOKEN") || undefined,
-  } as const,
   VOLUMES: {
     CONFIG: parsePath(resolveEnv("VOLUMES_CONFIG"), "/config"),
     FILES: parsePath(resolveEnv("VOLUMES_FILES"), "/files"),
@@ -529,9 +518,6 @@ export function getCensoredConfiguration() {
     ? "**REDACTED**"
     : null;
   censoredConfig.AUTH.SEED = censoredConfig.AUTH.SEED ? "**REDACTED**" : null;
-  censoredConfig.WEB_UI.GITHUB_TOKEN = censoredConfig.WEB_UI.GITHUB_TOKEN
-    ? "**REDACTED**"
-    : null;
   censoredConfig.NOTIFICATIONS.WEBHOOK_URL = censoredConfig.NOTIFICATIONS
     .WEBHOOK_URL
     ? "**REDACTED**"

@@ -4,4 +4,7 @@ Dockerfile text eol=lf
 vendor/frontend/LICENSE text eol=lf
 vendor/frontend/NOTICE.txt text eol=lf
 vendor/frontend/provenance.json text eol=lf
+vendor/frontend/Dockerfile.runtime text eol=lf whitespace=-blank-at-eof
+vendor/frontend/nginx.runtime.conf text eol=lf whitespace=-blank-at-eof
+vendor/frontend/start-runtime.sh text eol=lf whitespace=-blank-at-eof
 vendor/frontend/playstash-frontend.zip -text

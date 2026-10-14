@@ -24,7 +24,6 @@ import {
 } from "../../uploads/streamed-upload.js";
 import { DatabaseService } from "../database/database.service.js";
 import { Role } from "../users/models/role.enum.js";
-import { WebUIService } from "../web-ui/web-ui.service.js";
 import { AdminLogRecordDto, AdminLogsService } from "./admin-logs.service.js";
 import { databaseRestoreMulterOptions } from "./database-restore.multer.js";
 
@@ -35,7 +34,6 @@ import { databaseRestoreMulterOptions } from "./database-restore.multer.js";
 export class AdminController {
   constructor(
     private readonly databaseService: DatabaseService,
-    private readonly webUIService: WebUIService,
     private readonly logs: AdminLogsService = new AdminLogsService(
       configuration,
     ),
@@ -97,17 +95,5 @@ export class AdminController {
     @Headers("X-Database-Password") password: string,
   ) {
     return this.databaseService.restore(file, password);
-  }
-
-  @Post("web-ui/restart")
-  @ApiOperation({
-    summary:
-      "Completely restarts the Web User Interface. The current instance will be stopped, cached data deleted, the Web UI will be re-downloaded according to the config, and then restarted.",
-    operationId: "postAdminWebUIRestart",
-  })
-  @MinimumRole(Role.ADMIN)
-  async postAdminWebUIRestart() {
-    await this.webUIService.cleanCacheExceptZip();
-    await this.webUIService.prepareFrontend();
   }
 }

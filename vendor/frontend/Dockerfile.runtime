@@ -1,0 +1,27 @@
+FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+
+ARG FRONTEND_VERSION=17.2.3
+ARG SECURITY_REFRESH=local
+LABEL org.opencontainers.image.title="PlayStash frontend runtime" \
+    org.opencontainers.image.version="${FRONTEND_VERSION}" \
+    org.opencontainers.image.source="https://github.com/PlayStash/playstash-frontend" \
+    org.opencontainers.image.licenses="CC-BY-NC-SA-4.0"
+
+# Only the already-built web assets enter this image; Node and the backend do not.
+RUN test -n "$SECURITY_REFRESH" && apk upgrade --no-cache \
+    && rm -rf /usr/share/nginx/html/* /docker-entrypoint.d
+COPY --chmod=0444 nginx.runtime.conf /etc/nginx/nginx.conf
+COPY --chmod=0555 start-runtime.sh /usr/local/bin/playstash-frontend-start
+COPY --chown=101:101 dist/ /usr/share/nginx/html/
+COPY LICENSE NOTICE.txt provenance.json /opt/playstash/frontend/
+RUN sed -i 's/\r$//' /usr/local/bin/playstash-frontend-start \
+    && chmod 0555 /usr/local/bin/playstash-frontend-start \
+    && chmod -R a-w /usr/share/nginx/html
+
+USER 101:101
+EXPOSE 8080
+STOPSIGNAL SIGQUIT
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+ENTRYPOINT ["/usr/local/bin/playstash-frontend-start"]
+

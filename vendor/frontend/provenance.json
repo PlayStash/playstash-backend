@@ -1,27 +1,44 @@
 {
   "schemaVersion": 1,
   "name": "PlayStash frontend",
-  "version": "17.2.1",
+  "version": "17.2.3",
   "repository": "https://github.com/PlayStash/playstash-frontend",
-  "commit": "8928af34becd749a972d126097c8d9b59591230d",
-  "source": "https://github.com/PlayStash/playstash-frontend/tree/8928af34becd749a972d126097c8d9b59591230d",
-  "release": "https://github.com/PlayStash/playstash-frontend/releases/tag/v17.2.1",
+  "commit": "de20c44fe57a404e32ff450aaf4977f0a107efcf",
+  "source": "https://github.com/PlayStash/playstash-frontend/tree/de20c44fe57a404e32ff450aaf4977f0a107efcf",
+  "release": "https://github.com/PlayStash/playstash-frontend/releases/tag/v17.2.3",
   "asset": {
     "filename": "playstash-frontend.zip",
-    "size": 9974459,
-    "sha256": "ac087701d18d5737e29d0e40e42a828e8642862e623385ef3de4df20f21202a1",
-    "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.1/playstash-frontend.zip"
+    "size": 9974634,
+    "sha256": "a6d67bbb34f13ea8800fe2831b3e55c3138e9fb4a94ce615530c5ae9c4de945f",
+    "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.3/playstash-frontend.zip"
   },
   "license": {
     "identifier": "CC-BY-NC-SA-4.0",
     "file": "LICENSE",
     "sha256": "1349a4b6148492b44f629e64eed676612e234fe9a839e4f3b277c1482c8849f1",
-    "source": "https://github.com/PlayStash/playstash-frontend/blob/8928af34becd749a972d126097c8d9b59591230d/LICENSE"
+    "source": "https://github.com/PlayStash/playstash-frontend/blob/de20c44fe57a404e32ff450aaf4977f0a107efcf/LICENSE"
   },
   "notice": {
     "file": "NOTICE.txt",
-    "sha256": "726eb4c410f947c21a9ed3f022a4cd87cf9279826c8c184c67dcc0f9fad955c0"
+    "sha256": "463f05b6a3319e5771c650b8fc84357167bf8d38b216691ea5cef087335ea178"
   },
+  "runtimeFiles": [
+    {
+      "file": "Dockerfile.runtime",
+      "sha256": "88243cd9a2d7e4e00ea3b1023fe14b15dc2b39819dfcac6a2d804585c31f19c7",
+      "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.3/Dockerfile.runtime"
+    },
+    {
+      "file": "nginx.runtime.conf",
+      "sha256": "3d93597231eae0cb7b8cdba626cbbc914cb4e0105d7ec0bf20c459110620b32a",
+      "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.3/nginx.runtime.conf"
+    },
+    {
+      "file": "start-runtime.sh",
+      "sha256": "c8810ad401a170eef1425ba22027b2a5d40588156aed8f92ed9a107c2ea4ffc0",
+      "url": "https://github.com/PlayStash/playstash-frontend/releases/download/v17.2.3/start-runtime.sh"
+    }
+  ],
   "bundledLicenseFiles": [
     {
       "path": "dist/assets/LICENSE_raw-CMPfrDK7.js",

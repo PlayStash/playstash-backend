@@ -22,7 +22,7 @@ async function fixture(run) {
 }
 
 test("the published frontend and all license texts validate offline", async () => {
-  assert.equal((await verifyBundledFrontend()).version, "17.2.1");
+  assert.equal((await verifyBundledFrontend()).version, "17.2.3");
 });
 
 test("a modified archive cannot pass the release checksum", () =>
@@ -39,7 +39,7 @@ test("a modified archive cannot pass the release checksum", () =>
 
 test("the declared release version cannot disagree with its source URLs", () =>
   fixture(async (directory, provenance) => {
-    provenance.version = "17.2.2";
+    provenance.version = "17.2.4";
     await writeFile(
       join(directory, "provenance.json"),
       JSON.stringify(provenance),
@@ -78,4 +78,26 @@ test("a missing required license module is rejected even with a valid ZIP hash",
       JSON.stringify(provenance),
     );
     await assert.rejects(verifyBundledFrontend(directory), /ENOENT/);
+  }));
+
+test("a changed frontend runtime definition cannot pass the release checksum", () =>
+  fixture(async (directory) => {
+    await writeFile(
+      join(directory, "nginx.runtime.conf"),
+      "Modified proxy configuration",
+    );
+    await assert.rejects(verifyBundledFrontend(directory), /immutable release/);
+  }));
+
+test("missing frontend runtime definitions are rejected", () =>
+  fixture(async (directory, provenance) => {
+    provenance.runtimeFiles.pop();
+    await writeFile(
+      join(directory, "provenance.json"),
+      JSON.stringify(provenance),
+    );
+    await assert.rejects(
+      verifyBundledFrontend(directory),
+      /runtime definitions/,
+    );
   }));

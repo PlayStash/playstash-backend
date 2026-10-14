@@ -14,8 +14,8 @@ docker compose up -d
 ```
 
 Open `http://SERVER-IP:8080` and register your administrator account. GitHub builds
-the public AMD64/ARM64 image, which includes the web interface. PostgreSQL,
-persistent data directories, a unique database password and a private
+separate public AMD64/ARM64 frontend, backend and PostgreSQL images.
+Persistent data directories, a unique database password and a private
 authentication key are prepared automatically.
 The first registered account becomes the administrator; later accounts need
 activation. No source checkout, server build, registry login or environment file
@@ -67,7 +67,7 @@ GitHub-hosted jobs run automatically on their declared triggers. Pull requests r
 
 This repository currently defines no self-hosted runner jobs. Any future jobs on user-installed runners must require the repository Actions variable `PLAYSTASH_RUN_SELF_HOSTED` to equal the exact value `true`; unset or `false` keeps those jobs disabled by default. Configure the variable under Settings → Secrets and variables → Actions → Variables. It does not gate GitHub-hosted jobs.
 
-Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.3` is the immutable version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. The server container package is public for anonymous pulls while the source repository stays private. Stable releases include the Compose files and server guide.
+Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.4` is the immutable backend version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. The server container package is public for anonymous pulls while the source repository stays private. Distinct `frontend` / `frontend-dev` / `frontend-v17.1.4` tags contain the web interface; `postgres16` / `postgres16-dev` / `postgres16-v17.1.4` contain the database. Stable releases include the single Compose file that starts all separate services and the server guide.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 

@@ -3,7 +3,7 @@ import { ConfigModule as NestConfigModule } from "@nestjs/config";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ScheduleModule } from "@nestjs/schedule";
-import configuration, { playstashConfiguration } from "./configuration.js";
+import { playstashConfiguration } from "./configuration.js";
 import { DisableApiIfInterceptor } from "./interceptors/disable-api-if.interceptor.js";
 import { HttpLoggingInterceptor } from "./interceptors/http-logging.interceptor.js";
 import { AdminModule } from "./modules/admin/admin.module.js";
@@ -25,7 +25,6 @@ import { SavefileModule } from "./modules/savefiles/savefile.module.js";
 import { ServerModule } from "./modules/server/server.module.js";
 import { StatusModule } from "./modules/status/status.module.js";
 import { UsersModule } from "./modules/users/users.module.js";
-import { WebUIModule } from "./modules/web-ui/web-ui.module.js";
 
 @Module({
   imports: [
@@ -54,7 +53,6 @@ import { WebUIModule } from "./modules/web-ui/web-ui.module.js";
     GarbageCollectionModule,
     ServerModule,
     StatusModule,
-    ...(configuration.WEB_UI.ENABLED ? [WebUIModule] : []),
   ],
   providers: [
     {

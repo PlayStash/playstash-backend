@@ -1,12 +1,12 @@
 import type { Mocked } from "vitest";
 import { DatabaseService } from "../database/database.service.js";
-import { WebUIService } from "../web-ui/web-ui.service.js";
+import { AdminLogsService } from "./admin-logs.service.js";
 import { AdminController } from "./admin.controller.js";
 
 describe("AdminController", () => {
   let controller: AdminController;
   let databaseService: Mocked<DatabaseService>;
-  let webUIService: Mocked<WebUIService>;
+  let logs: Mocked<AdminLogsService>;
 
   beforeEach(() => {
     databaseService = {
@@ -14,12 +14,11 @@ describe("AdminController", () => {
       restore: vi.fn(),
     } as any;
 
-    webUIService = {
-      cleanCacheExceptZip: vi.fn(),
-      prepareFrontend: vi.fn(),
+    logs = {
+      getRecentLogs: vi.fn(),
     } as any;
 
-    controller = new AdminController(databaseService, webUIService);
+    controller = new AdminController(databaseService, logs);
   });
 
   describe("getAdminDatabaseBackup", () => {
@@ -49,27 +48,12 @@ describe("AdminController", () => {
     });
   });
 
-  describe("postAdminWebUIRestart", () => {
-    it("should clean cache and re-prepare frontend", async () => {
-      webUIService.cleanCacheExceptZip.mockResolvedValue(undefined);
-      webUIService.prepareFrontend.mockResolvedValue(undefined);
+  describe("getAdminLogs", () => {
+    it("returns the sanitized records from the logs service", async () => {
+      const records = [{ level: "info", message: "Server started." }];
+      logs.getRecentLogs.mockResolvedValue(records);
 
-      await controller.postAdminWebUIRestart();
-      expect(webUIService.cleanCacheExceptZip).toHaveBeenCalled();
-      expect(webUIService.prepareFrontend).toHaveBeenCalled();
-    });
-
-    it("should call cleanCacheExceptZip before prepareFrontend", async () => {
-      const callOrder: string[] = [];
-      webUIService.cleanCacheExceptZip.mockImplementation(async () => {
-        callOrder.push("clean");
-      });
-      webUIService.prepareFrontend.mockImplementation(async () => {
-        callOrder.push("prepare");
-      });
-
-      await controller.postAdminWebUIRestart();
-      expect(callOrder).toEqual(["clean", "prepare"]);
+      expect(await controller.getAdminLogs()).toEqual(records);
     });
   });
 });

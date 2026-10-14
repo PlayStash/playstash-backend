@@ -69,6 +69,23 @@ export async function verifyBundledFrontend(directory = defaultDirectory) {
     provenance.notice.sha256,
     "The frontend attribution notice must be preserved.",
   );
+  assert.deepEqual(
+    provenance.runtimeFiles?.map(({ file }) => file).sort(),
+    ["Dockerfile.runtime", "nginx.runtime.conf", "start-runtime.sh"],
+    "All frontend runtime definitions must come from the pinned release.",
+  );
+  for (const item of provenance.runtimeFiles) {
+    assert.equal(
+      item.url,
+      `${repository}/releases/download/v${provenance.version}/${item.file}`,
+    );
+    assert.match(item.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(
+      (await hashFile(join(directory, item.file))).sha256,
+      item.sha256,
+      "Frontend runtime definitions differ from the immutable release.",
+    );
+  }
   assert.ok(
     Array.isArray(provenance.bundledLicenseFiles) &&
       provenance.bundledLicenseFiles.length === 2,

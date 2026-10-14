@@ -9,10 +9,11 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { platform, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import configuration from "../../configuration.js";
 
 import { DatabaseService } from "./database.service.js";
@@ -53,18 +54,33 @@ vi.mock("../../logging.js", () => ({
 describe("DatabaseService", () => {
   let service: DatabaseService;
   let mockDataSource: any;
+  let testDirectory: string;
+  let backupDirectory: string;
+  let previousVolumes: unknown;
 
   beforeEach(() => {
+    testDirectory = mkdtempSync(join(tmpdir(), "playstash-db-backups-"));
+    backupDirectory = join(testDirectory, "persistent", "db");
+    const config = configuration as any;
+    previousVolumes = config.VOLUMES;
+    config.VOLUMES = { ...config.VOLUMES, SQLITEDB: backupDirectory };
     mockDataSource = {
       initialize: vi.fn().mockResolvedValue(undefined),
       destroy: vi.fn().mockResolvedValue(undefined),
       runMigrations: vi.fn().mockResolvedValue([]),
+      query: vi.fn().mockResolvedValue([{ server_version_num: "180006" }]),
     };
 
     service = new DatabaseService(mockDataSource, configuration as any);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (configuration as any).VOLUMES = previousVolumes;
+    expect(resolve(dirname(testDirectory))).toBe(resolve(tmpdir()));
+    expect(basename(testDirectory)).toMatch(/^playstash-db-backups-/);
+    rmSync(testDirectory, { recursive: true, force: true });
+  });
 
   // ─── validatePassword ──────────────────────────────────────────────
 
@@ -279,9 +295,14 @@ describe("DatabaseService", () => {
       const config = configuration as any;
       const previousSystem = config.DB.SYSTEM;
       config.DB.SYSTEM = "POSTGRESQL";
-      vi.spyOn(service as any, "backupPostgresql").mockResolvedValue(undefined);
+      vi.spyOn(service, "backupPostgresql").mockImplementation(
+        async (filename) => {
+          writeFileSync(filename, "precautionary snapshot");
+          return undefined as any;
+        },
+      );
       const execSpy = vi
-        .spyOn(service as any, "execPromise")
+        .spyOn(service as any, "execFilePromise")
         .mockResolvedValue({ stdout: "", stderr: "" });
       try {
         await service.restore({ path: tempDump } as any, "correct-password");
@@ -289,10 +310,111 @@ describe("DatabaseService", () => {
         const pgRestoreCall = execSpy.mock.calls.find((call) =>
           String(call[0]).includes("pg_restore"),
         );
-        expect(pgRestoreCall?.[0]).toContain(tempDump);
+        expect(pgRestoreCall?.[1]).toContain(tempDump);
         expect(existsSync(tempDump)).toBe(false);
       } finally {
         config.DB.SYSTEM = previousSystem;
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("PostgreSQL restore failures", () => {
+    it("rolls back a failed restore and reports failure instead of running migrations", async () => {
+      const directory = mkdtempSync(join(tmpdir(), "playstash-rollback-"));
+      const dump = join(directory, "failed dump; literal.tar");
+      writeFileSync(dump, "invalid incoming dump");
+      let recoveryPath = "";
+      vi.spyOn(service, "backupPostgresql").mockImplementation(
+        async (filename) => {
+          recoveryPath = filename;
+          writeFileSync(filename, "original database snapshot");
+          return undefined as any;
+        },
+      );
+      let restoreCount = 0;
+      const execute = vi
+        .spyOn(service as any, "execFilePromise")
+        .mockImplementation(async (...parameters: unknown[]) => {
+          const [command, args] = parameters as [string, string[]];
+          if (command === "pg_restore" && ++restoreCount === 1) {
+            expect(args.at(-1)).toBe(dump);
+            throw new Error("pg_restore: errors ignored on restore: 1");
+          }
+          return { stdout: "", stderr: "" };
+        });
+      try {
+        await expect(
+          service.restore({ path: dump } as any, "correct-password"),
+        ).rejects.toThrow("original database was retained or recovered");
+        expect(restoreCount).toBe(2);
+        expect(
+          execute.mock.calls.filter(([command]) => command === "dropdb"),
+        ).toHaveLength(2);
+        expect(execute.mock.calls.at(-1)?.[1]).toContain(recoveryPath);
+        expect(mockDataSource.query).toHaveBeenCalledTimes(1);
+        expect(mockDataSource.runMigrations).not.toHaveBeenCalled();
+        expect(existsSync(dump)).toBe(false);
+        expect(existsSync(recoveryPath)).toBe(false);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("does not replace the database if the precautionary backup fails", async () => {
+      vi.spyOn(service, "backupPostgresql").mockRejectedValue(
+        new Error("backup failed"),
+      );
+      const execute = vi.spyOn(service as any, "execFilePromise");
+      await expect(
+        service.restorePostgresql({ path: "unused" } as any),
+      ).rejects.toThrow(InternalServerErrorException);
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("keeps the private snapshot when rollback fails", async () => {
+      const directory = mkdtempSync(join(tmpdir(), "playstash-recovery-"));
+      const dump = join(directory, "bad.tar");
+      writeFileSync(dump, "bad backup");
+      let recoveryPath = "";
+      vi.spyOn(service, "backupPostgresql").mockImplementation(
+        async (filename) => {
+          recoveryPath = filename;
+          writeFileSync(filename, "original snapshot");
+          return undefined as any;
+        },
+      );
+      vi.spyOn(service as any, "execFilePromise").mockImplementation(
+        async (...parameters: unknown[]) => {
+          if (parameters[0] === "pg_restore")
+            throw new Error("restore unavailable");
+          return { stdout: "", stderr: "" };
+        },
+      );
+      try {
+        expect(existsSync(backupDirectory)).toBe(false);
+        await expect(
+          service.restore({ path: dump } as any, "correct-password"),
+        ).rejects.toThrow("Error restoring pre-restore");
+        expect(readFileSync(recoveryPath, "utf8")).toBe("original snapshot");
+        expect(resolve(dirname(dirname(recoveryPath)))).toBe(
+          resolve(backupDirectory),
+        );
+        if (platform() !== "win32") {
+          expect(statSync(backupDirectory).mode & 0o777).toBe(0o700);
+          expect(statSync(dirname(recoveryPath)).mode & 0o777).toBe(0o700);
+          expect(statSync(recoveryPath).mode & 0o777).toBe(0o600);
+        }
+        expect(existsSync(dump)).toBe(false);
+      } finally {
+        if (recoveryPath) {
+          const recoveryDirectory = dirname(recoveryPath);
+          expect(resolve(dirname(recoveryDirectory))).toBe(
+            resolve(backupDirectory),
+          );
+          expect(basename(recoveryDirectory)).toMatch(/^playstash-restore-/);
+          rmSync(recoveryDirectory, { recursive: true, force: true });
+        }
         rmSync(directory, { recursive: true, force: true });
       }
     });
