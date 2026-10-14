@@ -22,6 +22,8 @@ activation. No source checkout, server build, registry login or environment file
 is required. See [the server guide](docs/DOCKER.md) for games, backups, updates,
 custom ports and the PostgreSQL configuration.
 
+See [the central PlayStash documentation](https://github.com/PlayStash/playstash-docs) and [metadata setup](docs/metadata.md) for Steam, IGDB, remapping and covers. [Privacy and external services](docs/privacy.md) explains analytics, provider requests, own-server metrics and logs.
+
 See [Game packages](docs/packages.md) for unarchived game folders, optional installation manifests, extras, and separate mod/DLC/patch archives.
 
 Additional guides cover [folder tags](docs/folder-tags.md), [requests and reviews](docs/feedback.md), [chat](docs/chat.md), [game metrics](docs/metrics.md), [library options](docs/library-options.md), and [administrator logs](docs/admin-logs.md).

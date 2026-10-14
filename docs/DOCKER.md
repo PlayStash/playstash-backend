@@ -16,6 +16,11 @@ Open `http://SERVER-IP:8080` and register your account. The first account become
 an active administrator; later accounts require administrator activation. Complete
 this first registration before giving other people access to the instance.
 
+To obtain game descriptions and covers, enable Steam or configure IGDB in the
+backend environment. Steam needs no API key. See [Metadata, covers and game
+descriptions](metadata.md) for the configuration, refreshing existing games,
+correcting matches and setting your own images.
+
 ## Services and network
 
 | Service              | Responsibility                                   | Reachability                            |

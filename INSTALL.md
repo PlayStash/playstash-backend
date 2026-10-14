@@ -108,4 +108,4 @@ Notifications are sent asynchronously, with timeouts, a bounded queue, and retri
 
 ## Contributing
 
-Before contributing, please review and agree to the [Contributors License Agreement](CONTRIBUTING.md) and the [License](LICENSE.md).
+Before contributing, please review and agree to the [Contributors License Agreement](CONTRIBUTING.md) and the [License](LICENSE).

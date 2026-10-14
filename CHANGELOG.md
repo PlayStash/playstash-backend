@@ -9,6 +9,7 @@
 
 ### Changes
 
+- Added complete Steam/IGDB metadata setup, manual cover/remapping instructions and privacy guidance, with the current separate-container deployment documented in the central PlayStash documentation.
 - Backend startup no longer requires a frontend ZIP, frontend cache or GitHub token, including when administrator features are enabled.
 - API documentation remains available at `/api/docs` independently of frontend deployment.
 - HTTP and HTTPS allow up to one hour to receive a streamed upload instead of stopping after five minutes; incomplete request headers still time out after one minute.

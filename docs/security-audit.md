@@ -1,4 +1,4 @@
-# Backend security review — 2026-10-13
+# Backend security review — 2026-10-14
 
 The review includes direct, transitive, development and optional dependencies, plus authentication, library permissions, uploads, filesystem paths, image decoding, frontend bundles, chat, requests/reviews and outbound notifications. This records verified findings and safeguards, not a claim that every possible vulnerability has been excluded.
 
@@ -11,7 +11,7 @@ The review includes direct, transitive, development and optional dependencies, p
 - OAuth/provider response bodies, password hashes and signed media URLs are not logged. HTTP request logs omit query strings. The production Winston sink redacts nested credentials and symbol-backed interpolation metadata before file serialization or console inspection, including ordinary login and session records.
 - Production containers use an updated Alpine base, retain only runtime tools, drop privileges with su-exec, and do not make code/storage world-writable. Application code remains readable by explicitly selected non-root users; data volumes are private to their owner and new data uses umask 0077. Official static 7-Zip 26.04 binaries for AMD64 and ARM64 are downloaded from the maintainer release and checked against pinned SHA-256 hashes; its license is included.
 
-## Dependency patches
+## Dependency patches (13 October review checkpoint)
 
 Run the repository's declared package manager (`corepack pnpm`, currently pnpm 11.7.0), because its workspace overrides are part of the resolved security policy. The initial full audit reported 21 advisories: 1 critical, 11 high, 8 moderate and 1 low. After the updates below and addition of the ZIP parser, the full audit covered 609 resolved dependencies and reported zero advisories at every severity.
 
@@ -33,8 +33,8 @@ Direct dependencies use compatible patch ranges. Narrow, major-preserving overri
 
 - Remote artwork downloads accept only HTTP(S) without URL credentials. Every DNS answer and redirect must resolve to public addresses. Connections use those validated addresses, preventing a second DNS lookup from bypassing the check. A 30-second total deadline covers DNS, redirects and response streaming. The body is limited by `MEDIA_MAX_SIZE`, or 64 MiB when that limit is disabled.
 - SVG/XML external resources and active constructs are rejected before native decoding. SVG input is UTF-8; passive SVG is rasterized rather than served as executable XML. Conversion retains its pixel and processing-time limits.
-- Web bundle download redirects accept only HTTPS on `github.com`, `api.github.com`, `objects.githubusercontent.com` and `release-assets.githubusercontent.com`. The repository token is sent only on the initial authenticated API request, never to signed asset redirects. A single 120-second deadline and 256 MiB streamed byte limit cover the download.
-- ZIP extraction uses fresh staging storage, checks actual decompressed entry sizes, and permits at most 10,000 entries and 256 MiB expanded data. Absolute/parent paths, unsafe Windows names, links, nonordinary entries, encryption and case-folded duplicates are rejected. `dist/index.html` must exist before the active cache is replaced. Invalid bundles leave the previous cache intact.
+- Frontend assets are now a build/release input, not a backend runtime download. Their pinned release, source commit, checksums, safe archive layout, original license and third-party notices are verified before producing the separate frontend image.
+- Build-time ZIP validation checks actual entry sizes, limits expanded data and rejects absolute/parent paths, unsafe names, links, encrypted/nonordinary entries and duplicates. The API-only backend has no active frontend cache to replace.
 - Uploaded streams close both input and output on errors or aborts and remove partial temporary files. Temporary output uses exclusive creation. Game, media and save paths are resolved inside their configured volume and reject nested symlinks/junctions before reads, writes or deletion.
 - Existing game ACL, save owner/admin checks, feedback visibility and authenticated chat checks remain in effect. Regression coverage includes denied private-game access and real ORM checks for SQLite/PostgreSQL.
 
@@ -46,52 +46,44 @@ save data. This replaces inherited world-readable database permissions on Linux
 bind mounts. The Docker build context excludes local data, environment files and
 audit output so these cannot enter exported build caches.
 
-Configured filesystem volumes, local frontend ZIP paths, OAuth providers and notification endpoints are operator-controlled trust inputs. Volume roots may be mount points or explicitly configured links, but nested storage links are rejected. These path checks do not isolate the process from a privileged local attacker concurrently replacing filesystem components; restrict write access to trusted operators and the server account.
+Configured filesystem volumes, OAuth providers and notification endpoints are operator-controlled trust inputs. Volume roots may be mount points or explicitly configured links, but nested storage links are rejected. These path checks do not isolate the process from a privileged local attacker concurrently replacing filesystem components; restrict write access to trusted operators and the server account.
 
 An administrator may intentionally configure a webhook on the private network. That endpoint is not subject to the public-artwork restriction: notifications already reject redirects, use a short timeout and a bounded queue, and exclude restricted games. Artwork hosted only on a private network must instead be uploaded through the authenticated media endpoint.
 
 Keep upload limits enabled in exposed installations. A clean dependency audit is a snapshot, not a future guarantee. Host/container OS packages are reviewed separately from this Node dependency audit. Hosted CI runs normally; any future self-hosted runner job must explicitly require `PLAYSTASH_RUN_SELF_HOSTED == 'true'`, disabled by default.
 
-## PostgreSQL Compose deployment (17.1.3)
+## Separate frontend/API/PostgreSQL deployment (17.1.4)
 
-The default production Compose file starts PostgreSQL 16, a one-time credential
-initializer and the prebuilt backend. It exposes only the backend HTTP port and
-keeps database traffic inside the Compose network. Readiness checks use TCP so
-the temporary socket-only database used during PostgreSQL initialization does
-not start the backend prematurely.
+The production Compose starts separate frontend, API and PostgreSQL 16 containers
+and a one-shot credential initializer. Only the frontend publishes port 8080;
+API and database ports stay on the private network. The API image contains no
+product frontend or ZIP, and the frontend has no backend runtime or private data
+mounts. Nginx runs as UID/GID 101 with a read-only filesystem, dropped capabilities,
+no-new-privileges and a bounded writable tmpfs.
 
-The initializer generates 32 independently random bytes for the database
-password and stores them in `data/secrets/postgres-password`. The service account
-owns the ordinary single-link file with mode `0600`; its directory is `0700`.
-PostgreSQL's official root entrypoint reads the read-only secret before dropping
-privileges. The backend reads the same read-only file. Existing keys are reused,
-never printed or silently replaced; invalid content, excessive size, links and
-unexpected ownership stop initialization.
+The initializer generates 32 random bytes once for the private PostgreSQL
+password file. Existing ordinary single-link keys are validated and reused.
+AUTH_SEED_PERSIST=true independently generates and reuses /config/auth-seed;
+explicit operator keys retain precedence. Concurrent first registrations can
+create only one bootstrap administrator.
 
-Docker enables `AUTH_SEED_PERSIST=true`. A separate random key is privately stored
-in `/config/auth-seed`, allowing access/refresh tokens to remain valid after
-container replacement. Explicit environment, secret-file or YAML keys preserve
-their existing precedence. Registration is serialized within the single backend
-process so simultaneous first registrations cannot create multiple bootstrap
-administrators. Operators create their own first account before sharing access.
+The frontend proxies API, authenticated WebSockets, uploads and range downloads.
+Only explicitly configured PLAYSTASH_TRUSTED_PROXY_CIDRS peers may supply client
+address and protocol headers. PostgreSQL readiness is checked over TCP before
+API startup. Backend/ frontend replacement and full down/up retain stored data,
+accounts, password and authentication key.
 
-The frontend ZIP is pinned to its published version, source commit and SHA-256.
-Build checks verify its safe ZIP layout, original license and bundled third-party
-notices. It is baked into the image; startup needs no repository token or remote
-frontend download. License and provenance text use canonical Git line endings so
-their checksums also hold in Linux builds.
+PostgreSQL 16 backup/restore uses matching version 16 tools. Failed restore returns
+an error and rolls back the original database. Failed rollback preserves its
+private recovery snapshot in the persistent database-backup directory.
 
-The official PostgreSQL 16 Alpine image initially reported 61 known runtime
-advisories: one outdated system package and 60 records in the old Go-built
-privilege-switch helper. The patched database image updates the Alpine packages
-and replaces that helper with the Alpine `su-exec` implementation while retaining
-the official PostgreSQL entrypoint. On 14 October 2026, the complete patched
-database scan covered 46 OS packages with zero findings; the backend scan covered
-36 OS packages and its Node dependency graph with zero findings. No advisory or
-severity is ignored.
+The database image refreshes Alpine packages and replaces the outdated Go
+privilege-switch helper with su-exec while preserving the PostgreSQL entrypoint.
+Hosted release jobs scan all three actual images for AMD64 and ARM64 at every
+severity, exercise the complete Compose stack and backup/restore/rollback, and
+verify anonymous pulls before publishing. Weekly/manual jobs scan all three
+published image families. Source privacy is independent of image visibility.
 
-Hosted release jobs build and scan both actual runtime images for AMD64 and
-ARM64, exercise the complete PostgreSQL Compose deployment, and require anonymous
-registry pulls before publishing a usable stable release. Weekly/manual security
-jobs also scan both published platform images. The source repository remains
-private independently of the container package's public download permission.
+The exact 17.1.4 main/dev publication runs on 14 October 2026 produced twelve
+image reports with zero known findings (three images, two architectures, two
+branches). This is a dated verification, not a permanent security guarantee.

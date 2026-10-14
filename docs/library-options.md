@@ -1,5 +1,8 @@
 # Shared game options, providers and access
 
+For provider setup, IGDB credentials, Steam activation, manual covers and the
+current web-interface steps, see [Metadata, covers and game descriptions](metadata.md).
+
 Game metadata supports `archive_password`, Markdown
 `system_requirements_minimum`/`system_requirements_recommended`, and an array of
 named `launch_profiles`. A profile contains `name`, a relative `executable`
