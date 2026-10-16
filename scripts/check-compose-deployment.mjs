@@ -887,7 +887,7 @@ try {
   );
   assert.equal(
     frontend.image,
-    "ghcr.io/playstash/playstash-backend:frontend",
+    "ghcr.io/playstash/playstash-frontend:latest",
     "Default startup must use the separate published frontend image.",
   );
   assert.equal(

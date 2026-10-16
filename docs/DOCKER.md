@@ -7,8 +7,8 @@ Engine and the Docker Compose plugin, change into that directory, and run:
 docker compose up -d
 ```
 
-GitHub builds separate frontend, backend and PostgreSQL images for AMD64 and
-ARM64. Compose downloads and starts all three, prepares persistent directories
+The frontend repository builds its own AMD64/ARM64 image; the backend repository
+builds only the API and PostgreSQL images. Compose downloads and starts all three, prepares persistent directories
 and generates the private database password and authentication key. The server
 needs no source checkout, compiler, registry login or environment file.
 
@@ -42,22 +42,23 @@ for browser routes. Browser requests use the same public address. Authentication
 WebSocket upgrades, streaming uploads and ranged downloads pass through this
 proxy. PostgreSQL and the backend need no externally published ports.
 
-All three image families live in the existing public GHCR package
-`ghcr.io/playstash/playstash-backend`, with distinct tags:
+The images are public in two independently released GHCR packages:
 
-| Image                   | Stable       | Development      | Pinned release example |
-| ----------------------- | ------------ | ---------------- | ---------------------- |
-| Backend and initializer | `latest`     | `dev`            | `v17.1.4`              |
-| Frontend                | `frontend`   | `frontend-dev`   | `frontend-v17.1.4`     |
-| PostgreSQL              | `postgres16` | `postgres16-dev` | `postgres16-v17.1.4`   |
+| Image                   | Package                                | Stable       | Development      | Pinned release example |
+| ----------------------- | -------------------------------------- | ------------ | ---------------- | ---------------------- |
+| Backend and initializer | `ghcr.io/playstash/playstash-backend`  | `latest`     | `dev`            | `v17.1.5`              |
+| PostgreSQL              | `ghcr.io/playstash/playstash-backend`  | `postgres16` | `postgres16-dev` | `postgres16-v17.1.5`   |
+| Frontend                | `ghcr.io/playstash/playstash-frontend` | `latest`     | `dev`            | `v17.3.2`              |
 
-The frontend runtime definition and web build come from a pinned release of the
-separate frontend repository. Its source commit, checksums and licenses are
-verified before building and preserved in `/opt/playstash/frontend/` in the
-frontend image. A frontend repository push does not alter an already published
-server release. GitHub tests the complete deployment and scans all three runtime
-images on both architectures before publishing a stable server release. Source
-repositories remain private; public image visibility allows anonymous downloads.
+The frontend repository owns its source build, runtime definition, license
+notices and image publication. Its version is independent of the backend version.
+The backend neither copies a frontend ZIP nor builds or retags the frontend image.
+Backend CI anonymously resolves the matching published frontend channel once to
+an immutable multiarch digest, tests the complete deployment and scans all three
+runtime images on both architectures before publishing. Stable backend builds
+test frontend `latest`; development builds test frontend `dev`. The distributed
+Compose files follow stable `latest` images. Source repositories remain private;
+public image visibility allows anonymous downloads.
 
 ## Reverse proxy
 
@@ -145,7 +146,8 @@ docker compose up -d
 
 `docker compose down` removes containers and the network, retaining host data.
 Start again with `docker compose up -d`. Keep the same installation directory and
-do not delete `data/` or `games/`. To pin a release, change all image tags according
-to the table above, including the initializer. Backend and frontend can be
+do not delete `data/` or `games/`. To pin releases, select backend and PostgreSQL
+tags with the same backend version, including the initializer, and select the
+frontend's own version separately using the table above. Backend and frontend can be
 recreated independently without invalidating existing users or authentication
 keys. API documentation is available at `/api/docs`.

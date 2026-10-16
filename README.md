@@ -13,8 +13,10 @@ and the Compose plugin, then run:
 docker compose up -d
 ```
 
-Open `http://SERVER-IP:8080` and register your administrator account. GitHub builds
-separate public AMD64/ARM64 frontend, backend and PostgreSQL images.
+Open `http://SERVER-IP:8080` and register your administrator account. Each source
+repository publishes its own public AMD64/ARM64 runtime images: the frontend at
+`ghcr.io/playstash/playstash-frontend:latest`, the API and PostgreSQL at
+`ghcr.io/playstash/playstash-backend:latest` and `:postgres16`.
 Persistent data directories, a unique database password and a private
 authentication key are prepared automatically.
 The first registered account becomes the administrator; later accounts need
@@ -69,7 +71,19 @@ GitHub-hosted jobs run automatically on their declared triggers. Pull requests r
 
 This repository currently defines no self-hosted runner jobs. Any future jobs on user-installed runners must require the repository Actions variable `PLAYSTASH_RUN_SELF_HOSTED` to equal the exact value `true`; unset or `false` keeps those jobs disabled by default. Configure the variable under Settings → Secrets and variables → Actions → Variables. It does not gate GitHub-hosted jobs.
 
-Successful builds publish AMD64 and ARM64 container images to `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows `main`, and `v17.1.4` is the immutable backend version tag. Increase `package.json`'s version and add matching changelog notes for the next GitHub release; matching `v<VERSION>` Git tags are also supported. Publishing uses the repository's own `GITHUB_TOKEN`, with no Docker Hub credentials required. The server container package is public for anonymous pulls while the source repository stays private. Distinct `frontend` / `frontend-dev` / `frontend-v17.1.4` tags contain the web interface; `postgres16` / `postgres16-dev` / `postgres16-v17.1.4` contain the database. Stable releases include the single Compose file that starts all separate services and the server guide.
+Successful builds publish only API and PostgreSQL AMD64/ARM64 images to
+`ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows
+`main`, and `v17.1.5` is the immutable backend version tag. PostgreSQL uses
+`postgres16` / `postgres16-dev` / `postgres16-v17.1.5`. Increase `package.json`'s
+version and add matching changelog notes for the next GitHub release; matching
+`v<VERSION>` Git tags are also supported. Publishing uses this repository's own
+`GITHUB_TOKEN`, with no cross-repository or Docker Hub credentials required.
+The independently built frontend is published by its own repository at
+`ghcr.io/playstash/playstash-frontend:latest` / `:dev` / `:v<FRONTEND_VERSION>`.
+Backend CI resolves that public stable/development channel once to an immutable
+digest and retains both-architecture vulnerability scans and full Compose tests.
+Both container packages support anonymous pulls while source repositories stay
+private. Stable server releases include the Compose files and server guide.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 

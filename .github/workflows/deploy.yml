@@ -18,8 +18,27 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  docker:
+  frontend:
     needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve the public frontend channel to one immutable multiarch image
+        id: resolve
+        env:
+          CHANNEL: ${{ github.ref == 'refs/heads/dev' && 'dev' || 'latest' }}
+        run: node scripts/resolve-frontend-image.mjs "$CHANNEL"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frontend-image-provenance
+          path: frontend-image-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
+  docker:
+    needs: [test, frontend]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -45,10 +64,6 @@ jobs:
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
-      - uses: actions/download-artifact@v8
-        with:
-          name: frontend-runtime-context
-          path: frontend-runtime
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -100,23 +115,11 @@ jobs:
           echo "$scanner_sha256  $archive" | sha256sum --check -
           tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/playstash-trivy" trivy
           echo "$RUNNER_TEMP/playstash-trivy" >> "$GITHUB_PATH"
-      - name: Build and push separate frontend architecture image
-        id: frontend-build
-        uses: docker/build-push-action@v7
-        with:
-          context: frontend-runtime
-          file: frontend-runtime/Dockerfile.runtime
-          platforms: ${{ matrix.platform }}
-          build-args: SECURITY_REFRESH=${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          tags: ${{ steps.image.outputs.name }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=frontend-${{ strategy.job-index }}
-          cache-to: type=gha,mode=max,scope=frontend-${{ strategy.job-index }}
-      - name: Scan all three built images for vulnerabilities at every severity
+      - name: Scan built API and database plus the published frontend at every severity
         env:
           IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           POSTGRES_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.postgres-build.outputs.digest }}
-          FRONTEND_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.frontend-build.outputs.digest }}
+          FRONTEND_IMAGE: ${{ needs.frontend.outputs.image }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           status=0
@@ -141,12 +144,12 @@ jobs:
         env:
           IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           POSTGRES_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.postgres-build.outputs.digest }}
-          FRONTEND_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.frontend-build.outputs.digest }}
+          FRONTEND_IMAGE: ${{ needs.frontend.outputs.image }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           docker pull --platform "$PLATFORM" "$IMAGE"
           docker pull --platform "$PLATFORM" "$POSTGRES_IMAGE"
-          docker pull --platform "$PLATFORM" "$FRONTEND_IMAGE"
+          node scripts/check-public-container.mjs "$FRONTEND_IMAGE"
           node scripts/check-compose-deployment.mjs "$IMAGE" "$PLATFORM" "$POSTGRES_IMAGE" "$FRONTEND_IMAGE"
       - name: Verify real PostgreSQL backup, restore and rollback
         env:
@@ -178,22 +181,10 @@ jobs:
           path: postgres-digests/*
           if-no-files-found: error
           retention-days: 1
-      - name: Export frontend digest
-        env:
-          DIGEST: ${{ steps.frontend-build.outputs.digest }}
-        run: |
-          mkdir -p frontend-digests
-          touch "frontend-digests/${DIGEST#sha256:}"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: frontend-digest-${{ strategy.job-index }}
-          path: frontend-digests/*
-          if-no-files-found: error
-          retention-days: 1
 
   publish:
     if: ${{ always() && needs.docker.result == 'success' && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped') }}
-    needs: [docker, sonarcloud]
+    needs: [docker, sonarcloud, frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -207,11 +198,6 @@ jobs:
           pattern: postgres-digest-*
           path: postgres-digests
           merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: frontend-digest-*
-          path: frontend-digests
-          merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -222,6 +208,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF_NAME: ${{ github.ref_name }}
+          FRONTEND_IMAGE: ${{ needs.frontend.outputs.image }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           version=$(node -p "require('./package.json').version")
@@ -230,27 +217,20 @@ jobs:
           for digest in digests/*; do refs+=("$image@sha256:$(basename "$digest")"); done
           postgres_refs=()
           for digest in postgres-digests/*; do postgres_refs+=("$image@sha256:$(basename "$digest")"); done
-          frontend_refs=()
-          for digest in frontend-digests/*; do frontend_refs+=("$image@sha256:$(basename "$digest")"); done
           tags=(-t "$image:sha-${GITHUB_SHA:0:12}")
           postgres_tags=(-t "$image:postgres16-sha-${GITHUB_SHA:0:12}")
-          frontend_tags=(-t "$image:frontend-sha-${GITHUB_SHA:0:12}")
           if [ "$REF_NAME" = dev ]; then
             tags+=(-t "$image:dev")
             postgres_tags+=(-t "$image:postgres16-dev")
-            frontend_tags+=(-t "$image:frontend-dev")
             docker buildx imagetools create "${tags[@]}" "${refs[@]}"
             docker buildx imagetools create "${postgres_tags[@]}" "${postgres_refs[@]}"
-            docker buildx imagetools create "${frontend_tags[@]}" "${frontend_refs[@]}"
             node scripts/check-public-container.mjs "$image:dev"
             node scripts/check-public-container.mjs "$image:postgres16-dev"
-            node scripts/check-public-container.mjs "$image:frontend-dev"
             exit 0
           fi
 
           tags+=(-t "$image:latest")
           postgres_tags+=(-t "$image:postgres16")
-          frontend_tags+=(-t "$image:frontend")
           publish_release=false
           create_draft=false
           # REST releases/tags cannot discover drafts with a pending tag.
@@ -306,7 +286,8 @@ jobs:
             node scripts/release-notes.mjs "$version" > release-notes.md
             printf '\nContainer: `%s:%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
             printf '\nPostgreSQL 16: `%s:postgres16-%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
-            printf '\nSeparate frontend: `%s:frontend-%s` (Linux amd64 and arm64).\n' "$image" "$tag" >> release-notes.md
+            printf '\nFrontend: `ghcr.io/playstash/playstash-frontend:latest` (independently released for Linux amd64 and arm64).\n' >> release-notes.md
+            printf '\nFrontend verified for this server build: `%s`.\n' "$FRONTEND_IMAGE" >> release-notes.md
             # Reserve this version for this commit before touching its image tag.
             if [ "$create_draft" = true ]; then
               gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "PlayStash Server $version" --notes-file release-notes.md
@@ -316,20 +297,16 @@ jobs:
             gh release upload "$tag" --repo "$GITHUB_REPOSITORY" docker-compose.yml docker-compose.postgres.yml docs/DOCKER.md --clobber
             tags+=(-t "$image:$tag")
             postgres_tags+=(-t "$image:postgres16-$tag")
-            frontend_tags+=(-t "$image:frontend-$tag")
           fi
 
           # Existing published version tags remain unchanged; latest/sha can advance.
           docker buildx imagetools create "${tags[@]}" "${refs[@]}"
           docker buildx imagetools create "${postgres_tags[@]}" "${postgres_refs[@]}"
-          docker buildx imagetools create "${frontend_tags[@]}" "${frontend_refs[@]}"
           node scripts/check-public-container.mjs "$image:latest"
           node scripts/check-public-container.mjs "$image:postgres16"
-          node scripts/check-public-container.mjs "$image:frontend"
           if [ "$publish_release" = true ]; then
             node scripts/check-public-container.mjs "$image:$tag"
             node scripts/check-public-container.mjs "$image:postgres16-$tag"
-            node scripts/check-public-container.mjs "$image:frontend-$tag"
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           fi
 

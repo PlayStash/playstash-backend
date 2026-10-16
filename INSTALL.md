@@ -14,10 +14,12 @@ Run `pnpm check:fresh-schema sqlite` to verify all migrations against an empty, 
 
 The backend serves only the API. Run the web frontend as its own service; the
 standard Compose file starts both services with PostgreSQL. The frontend proxies
-API and WebSocket requests to the backend. It uses static assets from a verified,
-pinned frontend release; its image is built from the frontend repository's
-Dockerfile.runtime, nginx.runtime.conf and start-runtime.sh. No frontend GitHub
-token or ZIP is needed at server startup. See [the server guide](docs/DOCKER.md)
+API and WebSocket requests to the backend. The frontend repository independently
+builds and publishes `ghcr.io/playstash/playstash-frontend:latest` (stable),
+`:dev` and `:v<FRONTEND_VERSION>`. This backend repository builds only API and
+PostgreSQL images and consumes the public frontend by immutable digest in its
+deployment checks. No frontend checkout, GitHub token or ZIP is needed for a
+backend build or server startup. See [the server guide](docs/DOCKER.md)
 for network, HTTPS proxy and image settings.
 
 The server container package supports anonymous pulls; source repositories and

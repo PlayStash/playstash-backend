@@ -1,11 +1,11 @@
 node_modules
+vendor/frontend
+frontend-image-provenance.json
 .git
 .github
 .gitignore
 *.md
 dist
-vendor/frontend
-frontend-runtime
 .local
 data
 games

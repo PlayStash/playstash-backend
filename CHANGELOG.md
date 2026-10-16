@@ -1,5 +1,17 @@
 # PlayStash Backend Changelog
 
+## 17.1.5
+
+### Breaking Changes & Migration
+
+- The frontend image is now published independently at `ghcr.io/playstash/playstash-frontend` instead of the backend package's `frontend*` tags. -> **Use the updated Compose file or change only the frontend image to `ghcr.io/playstash/playstash-frontend:latest`; retain all existing backend and PostgreSQL volumes.**
+
+### Changes
+
+- Stable Compose installations update the frontend from its own `latest` image; frontend versions no longer depend on the backend release number.
+- Backend releases build only the API and PostgreSQL images, verify one immutable public frontend image for the matching stable/development channel, and retain both-architecture vulnerability scans, complete deployment checks and database backup/restore tests.
+- Removed the copied frontend ZIP, runtime files and frontend build preparation from the backend repository.
+
 ## 17.1.4
 
 ### Breaking Changes & Migration

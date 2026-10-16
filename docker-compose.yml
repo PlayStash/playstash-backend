@@ -60,7 +60,7 @@ services:
       playstash-init:
         condition: service_completed_successfully
   playstash-frontend:
-    image: ghcr.io/playstash/playstash-backend:frontend
+    image: ghcr.io/playstash/playstash-frontend:latest
     pull_policy: always
     restart: unless-stopped
     read_only: true

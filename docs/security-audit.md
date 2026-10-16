@@ -33,8 +33,8 @@ Direct dependencies use compatible patch ranges. Narrow, major-preserving overri
 
 - Remote artwork downloads accept only HTTP(S) without URL credentials. Every DNS answer and redirect must resolve to public addresses. Connections use those validated addresses, preventing a second DNS lookup from bypassing the check. A 30-second total deadline covers DNS, redirects and response streaming. The body is limited by `MEDIA_MAX_SIZE`, or 64 MiB when that limit is disabled.
 - SVG/XML external resources and active constructs are rejected before native decoding. SVG input is UTF-8; passive SVG is rasterized rather than served as executable XML. Conversion retains its pixel and processing-time limits.
-- Frontend assets are now a build/release input, not a backend runtime download. Their pinned release, source commit, checksums, safe archive layout, original license and third-party notices are verified before producing the separate frontend image.
-- Build-time ZIP validation checks actual entry sizes, limits expanded data and rejects absolute/parent paths, unsafe names, links, encrypted/nonordinary entries and duplicates. The API-only backend has no active frontend cache to replace.
+- In 17.1.4, frontend assets were a pinned backend release-build input, not a backend runtime download. From 17.1.5 the frontend repository owns that image build and its license notices; no frontend assets or runtime definitions are copied into the backend repository or its image.
+- The retained safe-ZIP utility checks actual entry sizes, limits expanded data and rejects absolute/parent paths, unsafe names, links, encrypted/nonordinary entries and duplicates. It is not wired into the API runtime or release pipeline; the API-only backend has no frontend cache to replace.
 - Uploaded streams close both input and output on errors or aborts and remove partial temporary files. Temporary output uses exclusive creation. Game, media and save paths are resolved inside their configured volume and reject nested symlinks/junctions before reads, writes or deletion.
 - Existing game ACL, save owner/admin checks, feedback visibility and authenticated chat checks remain in effect. Regression coverage includes denied private-game access and real ORM checks for SQLite/PostgreSQL.
 
@@ -87,3 +87,16 @@ published image families. Source privacy is independent of image visibility.
 The exact 17.1.4 main/dev publication runs on 14 October 2026 produced twelve
 image reports with zero known findings (three images, two architectures, two
 branches). This is a dated verification, not a permanent security guarantee.
+
+## Independently published frontend (17.1.5)
+
+The frontend is published by its own private source repository to the public
+`ghcr.io/playstash/playstash-frontend` package. Backend builds produce only API
+and PostgreSQL images. Deployment CI resolves the frontend's public `latest`
+or `dev` channel without registry/GitHub credentials, verifies its index bytes
+against the immutable digest and requires both Linux architectures. The same
+digest is scanned and used by both deployment jobs, preventing a channel update
+from changing the frontend between their checks. Anonymous image pulls, all
+severity scans, private storage, complete Compose roundtrips and actual
+PostgreSQL backup/restore/rollback remain required. No cross-repository token is
+needed, and weekly/manual scans follow the frontend's own public stable image.

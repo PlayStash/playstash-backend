@@ -7,8 +7,8 @@ import { dirname, join, resolve } from "node:path";
 const image = process.argv[2];
 assert.match(
   image,
-  /^ghcr\.io\/playstash\/playstash-backend:(?:latest|dev|v\d+\.\d+\.\d+|(?:postgres16|frontend)(?:-dev|-v\d+\.\d+\.\d+)?)$/,
-  "Provide the published PlayStash server image tag.",
+  /^ghcr\.io\/playstash\/(?:playstash-backend:(?:latest|dev|v\d+\.\d+\.\d+|postgres16(?:-dev|-v\d+\.\d+\.\d+)?)|playstash-frontend(?::(?:latest|dev|v\d+\.\d+\.\d+)|@sha256:[a-f0-9]{64}))$/,
+  "Provide a published PlayStash server or frontend image reference.",
 );
 const directory = mkdtempSync(join(tmpdir(), "playstash-anonymous-pull-"));
 const environment = { ...process.env, DOCKER_CONFIG: directory };

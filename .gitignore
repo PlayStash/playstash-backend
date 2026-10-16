@@ -44,3 +44,6 @@ lerna-debug.log*
 *.sqlite
 
 __pycache__/
+# Historical local frontend cache; current frontend images are built separately.
+/vendor/frontend/
+/frontend-image-provenance.json

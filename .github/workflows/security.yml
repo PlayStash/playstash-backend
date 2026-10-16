@@ -76,7 +76,7 @@ jobs:
           status=0
           "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/server.json" ghcr.io/playstash/playstash-backend:latest || status=1
           "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/postgres.json" ghcr.io/playstash/playstash-backend:postgres16 || status=1
-          "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/frontend.json" ghcr.io/playstash/playstash-backend:frontend || status=1
+          "$RUNNER_TEMP/trivy/trivy" image --platform "$PLATFORM" --scanners vuln --ignorefile /dev/null --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/frontend.json" ghcr.io/playstash/playstash-frontend:latest || status=1
           exit "$status"
       - name: Keep runtime vulnerability reports
         if: always()

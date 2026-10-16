@@ -5,6 +5,9 @@ the web interface currently has no form for adding provider credentials. The
 supplied Compose starts the server without contacting a live metadata provider:
 Steam is disabled by default, and IGDB needs your credentials.
 
+Keep these provider settings under `playstash-backend.environment`; the separately
+published `ghcr.io/playstash/playstash-frontend` image needs no provider credentials.
+
 The built-in live providers are Steam and IGDB. `RAWG (Legacy)` is a compatibility
 entry and does not fetch new metadata. SteamGridDB and other services are not
 built-in providers.
