@@ -1,5 +1,8 @@
 import configuration from "../../configuration.js";
-import { MediaGarbageCollectionService } from "./media-garbage-collection.service.js";
+import {
+  linkedMediaId,
+  MediaGarbageCollectionService,
+} from "./media-garbage-collection.service.js";
 
 vi.mock("../../configuration.js", () => ({
   __esModule: true,
@@ -145,6 +148,44 @@ describe("MediaGarbageCollectionService", () => {
 
       // Both are used, so no deletions
       expect(mockMediaService.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── media linked by metadata URLs ─────────────────────────────────
+
+  describe("media linked by metadata URLs", () => {
+    it("keeps uploaded screenshots and videos linked in game metadata", async () => {
+      const screenshot = { id: 7, file_path: "/media/shot.jpg" };
+      const video = { id: 8, file_path: "/media/clip.mp4" };
+      const unused = { id: 9, file_path: "/media/unused.jpg" };
+      mockMediaRepo.find.mockResolvedValue([screenshot, video, unused]);
+      mockGameMetadataRepo.find.mockResolvedValue([
+        {
+          id: 1,
+          cover: null,
+          background: null,
+          url_screenshots: [
+            "https://games.example/api/media/7",
+            "https://cdn.example/shot.jpg",
+          ],
+          url_trailers: ["/api/media/8"],
+          url_gameplays: null,
+        },
+      ]);
+
+      await service.garbageCollectUnusedMedia();
+
+      expect(mockMediaService.delete).toHaveBeenCalledTimes(1);
+      expect(mockMediaService.delete).toHaveBeenCalledWith(unused);
+    });
+
+    it("reads media ids only from media API paths", () => {
+      expect(linkedMediaId("https://games.example/api/media/42")).toBe(42);
+      expect(linkedMediaId("https://host.example/sub/api/media/3/")).toBe(3);
+      expect(linkedMediaId("/api/media/5")).toBe(5);
+      expect(linkedMediaId("https://cdn.example/media/42.jpg")).toBeNull();
+      expect(linkedMediaId("https://games.example/api/media/42/x")).toBeNull();
+      expect(linkedMediaId("https://games.example/api/media/abc")).toBeNull();
     });
   });
 

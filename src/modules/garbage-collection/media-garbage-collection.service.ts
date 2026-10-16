@@ -13,6 +13,22 @@ import { GameMetadata } from "../metadata/games/game.metadata.entity.js";
 import { PlaystashUser } from "../users/playstash-user.entity.js";
 const { readdir, remove } = fsExtra;
 
+/**
+ * Media id referenced by a metadata URL such as an uploaded screenshot
+ * (`https://server/api/media/42`). The server's public address is unknown
+ * here, so any host counts: keeping an image is safer than deleting one.
+ */
+export function linkedMediaId(url: string): number | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url, "http://local.invalid").pathname;
+  } catch {
+    return null;
+  }
+  const match = /\/api\/media\/(\d+)\/?$/.exec(pathname);
+  return match ? Number(match[1]) : null;
+}
+
 @Injectable()
 export class MediaGarbageCollectionService implements OnApplicationBootstrap {
   private readonly logger = new Logger(this.constructor.name);
@@ -57,7 +73,10 @@ export class MediaGarbageCollectionService implements OnApplicationBootstrap {
       const allMedia = await this.mediaRepository.find();
 
       // Collect paths of used media dynamically
-      const usedMediaPaths = await this.collectUsedMediaPaths();
+      const usedMediaPaths = [
+        ...(await this.collectUsedMediaPaths()),
+        ...(await this.collectLinkedMediaPaths(allMedia)),
+      ];
 
       // Remove unused media from the database
       const dbRemovedCount = await this.removeUnusedMediaFromDB(
@@ -91,6 +110,33 @@ export class MediaGarbageCollectionService implements OnApplicationBootstrap {
    *
    * @returns An array of media paths that are currently being used.
    */
+  private async collectLinkedMediaPaths(allMedia: Media[]): Promise<string[]> {
+    const linkedIds = new Set<number>();
+    const metadata = await this.gameMetadataRepository.find({
+      withDeleted: true,
+      loadEagerRelations: false,
+      select: {
+        id: true,
+        url_screenshots: true,
+        url_trailers: true,
+        url_gameplays: true,
+      },
+    });
+    for (const entry of metadata) {
+      for (const url of [
+        ...(entry.url_screenshots ?? []),
+        ...(entry.url_trailers ?? []),
+        ...(entry.url_gameplays ?? []),
+      ]) {
+        const id = linkedMediaId(url);
+        if (id != null) linkedIds.add(id);
+      }
+    }
+    return allMedia
+      .filter((media) => linkedIds.has(media.id) && media.file_path)
+      .map((media) => media.file_path ?? "");
+  }
+
   private async collectUsedMediaPaths(): Promise<string[]> {
     const mediaPaths: string[] = [];
     /**

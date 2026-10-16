@@ -71,8 +71,8 @@ This repository currently defines no self-hosted runner jobs. Any future jobs on
 
 Successful builds publish only API and PostgreSQL AMD64/ARM64 images to
 `ghcr.io/playstash/playstash-backend`: `dev` follows development, `latest` follows
-`main`, and `v17.1.5` is the immutable backend version tag. PostgreSQL uses
-`postgres16` / `postgres16-dev` / `postgres16-v17.1.5`. Increase `package.json`'s
+`main`, and `v17.1.6` is the immutable backend version tag. PostgreSQL uses
+`postgres16` / `postgres16-dev` / `postgres16-v17.1.6`. Increase `package.json`'s
 version and add matching changelog notes for the next GitHub release; matching
 `v<VERSION>` Git tags are also supported. Publishing uses this repository's own
 `GITHUB_TOKEN`, with no cross-repository or Docker Hub credentials required.

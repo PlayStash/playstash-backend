@@ -1,5 +1,12 @@
 # PlayStash Backend Changelog
 
+## 17.1.6
+
+### Changes
+
+- Media garbage collection keeps images and videos that game metadata links by their `/api/media/<id>` address, such as uploaded screenshots; previously they were deleted within an hour because only covers, backgrounds and avatars counted as used.
+- The attribution moved into a single `NOTICE` file; the server startup banner shows only the product name.
+
 ## 17.1.5
 
 ### Breaking Changes & Migration
@@ -12,7 +19,6 @@
 - Backend releases build only the API and PostgreSQL images, verify one immutable public frontend image for the matching stable/development channel, and retain both-architecture vulnerability scans, complete deployment checks and database backup/restore tests.
 - Removed the copied frontend ZIP, runtime files and frontend build preparation from the backend repository.
 - Clarified public frontend/backend source access and the separate visibility settings for container downloads; other PlayStash repositories remain private.
-- The attribution moved into a single `NOTICE` file; the server startup banner shows only the product name.
 
 ## 17.1.4
 
