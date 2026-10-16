@@ -1,7 +1,6 @@
 #!/bin/sh
 echo "========================================"
 echo "               PlayStash"
-echo "  Original authors: Phalcode contributors"
 echo "========================================"
 set -e
 # Database API keys and save files must not be readable by other local accounts.

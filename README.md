@@ -30,8 +30,6 @@ See [Game packages](docs/packages.md) for unarchived game folders, optional inst
 
 Additional guides cover [folder tags](docs/folder-tags.md), [requests and reviews](docs/feedback.md), [chat](docs/chat.md), [game metrics](docs/metrics.md), [library options](docs/library-options.md), and [administrator logs](docs/admin-logs.md).
 
-See the [upstream issue status](docs/upstream-issue-status.md) for implemented requests and the remaining achievement format/adapter clarification.
-
 PlayStash features do not require a paid subscription.
 
 ## Authentication security
@@ -89,11 +87,9 @@ Stable server releases include the Compose files and server guide.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 
-## Attribution and license
+## License
 
-This project builds on the work of Alkan Alper, Schäfer Philip GbR / Phalcode and its contributors. The original author and copyright notices remain in the source and license.
-
-This work is source-available and licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/). See [LICENSE](LICENSE) for the full terms.
+This work is source-available and licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/). See [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE).
 
 ## Responsible use
 

@@ -25,5 +25,3 @@ When you change code in this repository, you MUST keep `CHANGELOG.md` up to date
 
 5. **Thank issue contributors.**
    When a change resolves an issue, add the issue author's GitHub username (e.g. `@some-user`) to the `### Thanks` list in the current version section (create the heading if it does not exist). Keep the list deduplicated — one line per contributor, no repeats.
-
-   Never add the maintainer accounts `@Alfagun74` or `@Yelo420` to the list — they are project maintainers, not contributors.
