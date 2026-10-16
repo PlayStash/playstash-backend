@@ -10,7 +10,7 @@ To generate the frontend API specification from this backend without starting a 
 
 Run `pnpm check:fresh-schema sqlite` to verify all migrations against an empty, in-memory SQLite database. To check PostgreSQL, set `PLAYSTASH_TEST_DATABASE_URL` to an empty test database and run `pnpm check:fresh-schema postgres`.
 
-## Separate frontend and private repositories
+## Separate frontend and repository access
 
 The backend serves only the API. Run the web frontend as its own service; the
 standard Compose file starts both services with PostgreSQL. The frontend proxies
@@ -22,11 +22,12 @@ deployment checks. No frontend checkout, GitHub token or ZIP is needed for a
 backend build or server startup. See [the server guide](docs/DOCKER.md)
 for network, HTTPS proxy and image settings.
 
-The server container package supports anonymous pulls; source repositories and
-installer releases remain private. Those GitHub releases require an account with
-repository access. A private release feed cannot be used anonymously by the
-desktop updater; distribute updates through an accessible feed or download
-installers while authenticated.
+The frontend and backend source repositories and their releases are public.
+Other PlayStash repositories remain private; their releases require repository
+access. Public container downloads are controlled separately by GHCR package
+visibility. A private release feed cannot be used anonymously by the desktop
+updater; use an accessible feed or download that repository's installers while
+authenticated.
 
 ## Scheduled download bandwidth
 

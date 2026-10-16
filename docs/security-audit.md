@@ -90,7 +90,7 @@ branches). This is a dated verification, not a permanent security guarantee.
 
 ## Independently published frontend (17.1.5)
 
-The frontend is published by its own private source repository to the public
+The frontend is published by its own source repository to the public
 `ghcr.io/playstash/playstash-frontend` package. Backend builds produce only API
 and PostgreSQL images. Deployment CI resolves the frontend's public `latest`
 or `dev` channel without registry/GitHub credentials, verifies its index bytes
@@ -100,3 +100,6 @@ from changing the frontend between their checks. Anonymous image pulls, all
 severity scans, private storage, complete Compose roundtrips and actual
 PostgreSQL backup/restore/rollback remain required. No cross-repository token is
 needed, and weekly/manual scans follow the frontend's own public stable image.
+Frontend and backend source repositories are public; the other PlayStash
+repositories remain private. Source visibility and GHCR package visibility are
+separate settings.

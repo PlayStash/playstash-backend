@@ -11,6 +11,7 @@
 - Stable Compose installations update the frontend from its own `latest` image; frontend versions no longer depend on the backend release number.
 - Backend releases build only the API and PostgreSQL images, verify one immutable public frontend image for the matching stable/development channel, and retain both-architecture vulnerability scans, complete deployment checks and database backup/restore tests.
 - Removed the copied frontend ZIP, runtime files and frontend build preparation from the backend repository.
+- Clarified public frontend/backend source access and the separate visibility settings for container downloads; other PlayStash repositories remain private.
 
 ## 17.1.4
 

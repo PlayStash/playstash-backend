@@ -57,8 +57,10 @@ Backend CI anonymously resolves the matching published frontend channel once to
 an immutable multiarch digest, tests the complete deployment and scans all three
 runtime images on both architectures before publishing. Stable backend builds
 test frontend `latest`; development builds test frontend `dev`. The distributed
-Compose files follow stable `latest` images. Source repositories remain private;
-public image visibility allows anonymous downloads.
+Compose files follow stable `latest` images. Frontend and backend source
+repositories are public; the other PlayStash repositories remain private.
+GHCR package visibility is configured separately and permits anonymous image
+downloads when public.
 
 ## Reverse proxy
 

@@ -82,8 +82,10 @@ The independently built frontend is published by its own repository at
 `ghcr.io/playstash/playstash-frontend:latest` / `:dev` / `:v<FRONTEND_VERSION>`.
 Backend CI resolves that public stable/development channel once to an immutable
 digest and retains both-architecture vulnerability scans and full Compose tests.
-Both container packages support anonymous pulls while source repositories stay
-private. Stable server releases include the Compose files and server guide.
+Both container packages support anonymous pulls. The frontend and backend source
+repositories are public; the other PlayStash repositories remain private.
+Container package visibility is configured separately from source visibility.
+Stable server releases include the Compose files and server guide.
 
 For optional SonarCloud scans, set `PLAYSTASH_SONAR_PROJECT_KEY`, `PLAYSTASH_SONAR_ORGANIZATION`, and the `SONAR_TOKEN` secret for your own account.
 
