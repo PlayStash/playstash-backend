@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import fsExtra from "fs-extra";
 import lodash from "lodash";
 import {
   type DeepPartial,
@@ -41,6 +42,7 @@ import { GameExistence } from "./models/game-existence.enum.js";
 import { type UpdateGameDto } from "./models/update-game.dto.js";
 import { PlaystashGame } from "./playstash-game.entity.js";
 
+const { pathExists } = fsExtra;
 const { kebabCase, toLower } = lodash;
 
 @Injectable()
@@ -606,6 +608,10 @@ export class GamesService {
     }
 
     if (!foundGame) {
+      foundGame = await this.findRenamedGame(game);
+    }
+
+    if (!foundGame) {
       this.logger.debug({
         message: "No duplicate game match found.",
         game: logPlaystashGame(game),
@@ -708,6 +714,73 @@ export class GamesService {
     }
 
     return firstYear != null && secondYear != null && firstYear === secondYear;
+  }
+
+  /**
+   * The game a renamed file belongs to: exactly one game whose file of the
+   * same size has disappeared from storage. Renaming a file (for example to a
+   * cleaner title or with a year tag) then keeps its game, metadata, saves
+   * and progress instead of creating a new game.
+   */
+  private async findRenamedGame(
+    game: PlaystashGame,
+  ): Promise<PlaystashGame | undefined> {
+    if (game.size == null || BigInt(game.size) <= 0n) return undefined;
+    const size = BigInt(game.size);
+    const versions =
+      (await this.gameVersionRepository.find({
+        relationLoadStrategy: "query",
+        where: { size: size as any },
+        relations: toFindOptionsRelations<GameVersion>(["game"]),
+        withDeleted: true,
+      })) ?? [];
+    const legacyGames =
+      (await this.gamesRepository.find({
+        relationLoadStrategy: "query",
+        where: { size: size as any },
+        relations: this.defaultRelations,
+        withDeleted: true,
+      })) ?? [];
+    const candidates = new Map<number, PlaystashGame>();
+    for (const [filePath, candidate] of [
+      ...versions.map((version) => [version.file_path, version.game] as const),
+      ...legacyGames
+        .filter((legacy) => !legacy.versions?.length)
+        .map((legacy) => [legacy.file_path, legacy] as const),
+    ]) {
+      if (!candidate || !filePath || filePath === game.file_path) continue;
+      if (filePath.startsWith("merged:") || (await pathExists(filePath))) {
+        continue;
+      }
+      candidates.set(candidate.id, candidate);
+    }
+    if (candidates.size !== 1) {
+      if (candidates.size > 1) {
+        this.logger.debug({
+          message: "Several vanished files match a renamed file; not merging.",
+          game: logPlaystashGame(game),
+          candidateIds: [...candidates.keys()],
+        });
+      }
+      return undefined;
+    }
+    const [renamed] = candidates.values();
+    const found =
+      (await this.gamesRepository.findOne({
+        relationLoadStrategy: "query",
+        where: { id: renamed.id },
+        relations: this.defaultRelations,
+        withDeleted: true,
+      })) ?? undefined;
+    if (found) {
+      this.logger.log({
+        message:
+          "Matched a renamed file to its game by size and vanished file.",
+        game: logPlaystashGame(game),
+        existingGame: logPlaystashGame(found),
+      });
+    }
+    return found;
   }
 
   public generateSortTitle(title: string): string {

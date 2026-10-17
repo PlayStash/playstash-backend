@@ -5,6 +5,7 @@
 ### Changes
 
 - Games have a new `save_paths` metadata field: the folders holding the game's save files (with `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%LOCALAPPDATALOW%`, `%DOCUMENTS%` and `%INSTALLDIR%` placeholders). Clients use it to back up and restore saves of games their save tool does not know; an empty list clears it. The database gains the `game_metadata.save_paths` column automatically on startup.
+- Renaming a game file (for example to a cleaner title or with a year tag) keeps its game: when no title matches, a new file is matched to the one game whose file of the same size has disappeared, so metadata, saves, progress and installations stay attached. Previously the renamed file became a new game.
 
 ## 17.1.6
 

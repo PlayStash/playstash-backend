@@ -62,6 +62,7 @@ describe("GamesService", () => {
 
     gameVersionRepository = {
       findOne: vi.fn(),
+      find: vi.fn().mockResolvedValue([]),
     } as any;
 
     service = new GamesService(
@@ -376,6 +377,70 @@ describe("GamesService", () => {
   });
 
   describe("checkIfExistsInDatabase", () => {
+    describe("renamed files", () => {
+      const renamed = () =>
+        createMockGame({
+          id: undefined as any,
+          title: "Exquisite Fishing",
+          file_path: "/files/Exquisite Fishing (v1.0) (W_P) (2024).zip",
+          release_date: new Date("2024-01-01"),
+          size: 94329553n,
+        });
+
+      it("keeps the game of a renamed file whose old file vanished", async () => {
+        const existing = createMockGame({
+          id: 46,
+          title: "Exquisite.Fishing",
+          file_path: "/files/Exquisite.Fishing (W_P).zip",
+          size: 94329553n,
+          versions: [],
+        });
+        gamesRepository.findOne
+          .mockResolvedValueOnce(null) // by file_path
+          .mockResolvedValueOnce(existing); // reload of the renamed game
+        gamesRepository.find
+          .mockResolvedValueOnce([]) // title candidates
+          .mockResolvedValueOnce([existing]); // legacy games of that size
+        gameVersionRepository.find.mockResolvedValueOnce([
+          {
+            file_path: "/playstash-missing/Exquisite.Fishing (W_P).zip",
+            game: existing,
+          } as any,
+        ]);
+
+        const [existence, found] =
+          await service.checkIfExistsInDatabase(renamed());
+
+        expect(found?.id).toBe(46);
+        expect(existence).toBe(GameExistence.EXISTS_BUT_ALTERED);
+        expect(gameVersionRepository.find).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { size: 94329553n } }),
+        );
+      });
+
+      it("does not merge when the old file still exists or several games match", async () => {
+        const stillThere = createMockGame({ id: 5 });
+        const a = createMockGame({ id: 6 });
+        const b = createMockGame({ id: 7 });
+        gamesRepository.findOne.mockResolvedValue(null);
+        gamesRepository.find.mockResolvedValue([]);
+        gameVersionRepository.find.mockResolvedValueOnce([
+          { file_path: process.cwd(), game: stillThere } as any,
+        ]);
+        expect((await service.checkIfExistsInDatabase(renamed()))[0]).toBe(
+          GameExistence.DOES_NOT_EXIST,
+        );
+
+        gameVersionRepository.find.mockResolvedValueOnce([
+          { file_path: "/playstash-missing/a.zip", game: a } as any,
+          { file_path: "/playstash-missing/b.zip", game: b } as any,
+        ]);
+        expect((await service.checkIfExistsInDatabase(renamed()))[0]).toBe(
+          GameExistence.DOES_NOT_EXIST,
+        );
+      });
+    });
+
     it("should return DOES_NOT_EXIST when game is new", async () => {
       const game = createMockGame();
       gamesRepository.findOne.mockResolvedValueOnce(null); // by file_path
