@@ -46,8 +46,8 @@ The images are public in two independently released GHCR packages:
 
 | Image                   | Package                                | Stable       | Development      | Pinned release example |
 | ----------------------- | -------------------------------------- | ------------ | ---------------- | ---------------------- |
-| Backend and initializer | `ghcr.io/playstash/playstash-backend`  | `latest`     | `dev`            | `v17.1.6`              |
-| PostgreSQL              | `ghcr.io/playstash/playstash-backend`  | `postgres16` | `postgres16-dev` | `postgres16-v17.1.6`   |
+| Backend and initializer | `ghcr.io/playstash/playstash-backend`  | `latest`     | `dev`            | `v17.1.7`              |
+| PostgreSQL              | `ghcr.io/playstash/playstash-backend`  | `postgres16` | `postgres16-dev` | `postgres16-v17.1.7`   |
 | Frontend                | `ghcr.io/playstash/playstash-frontend` | `latest`     | `dev`            | `v17.3.2`              |
 
 The frontend repository owns its source build, runtime definition, license

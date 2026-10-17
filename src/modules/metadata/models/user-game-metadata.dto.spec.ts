@@ -64,4 +64,22 @@ describe("shared game metadata validation", () => {
     });
     expect(await validate(dto)).toEqual([]);
   });
+
+  it("accepts save folder paths and an empty list that clears them", async () => {
+    for (const save_paths of [
+      ["%LOCALAPPDATALOW%/PinkySoul/ExquisiteFishing", "%INSTALLDIR%/saves"],
+      [],
+    ]) {
+      const dto = plainToInstance(UpdateGameUserMetadataDto, { save_paths });
+      expect(await validate(dto)).toEqual([]);
+    }
+  });
+
+  it.each([[[""]], [["x".repeat(1025)]], [[42]], ["not-an-array"]])(
+    "rejects invalid save folder paths: %j",
+    async (save_paths) => {
+      const dto = plainToInstance(UpdateGameUserMetadataDto, { save_paths });
+      expect(await validate(dto)).not.toEqual([]);
+    },
+  );
 });

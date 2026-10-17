@@ -500,6 +500,39 @@ describe("MetadataService", () => {
       // description was null – should not be in merged result (release_date from base remains)
       expect(savedMeta.title).toBe("Title");
     });
+
+    it("lets user save folders override provider ones, also when emptied", async () => {
+      const providerMeta = {
+        provider_slug: "test-provider",
+        provider_data_id: "123",
+        title: "Title",
+        save_paths: ["%APPDATA%/Provider"],
+        created_at: new Date("2020-01-01"),
+        updated_at: new Date("2025-01-01"),
+      } as unknown as GameMetadata;
+      service.registerProvider(createMockProvider());
+      mockGameMetadataService.save.mockImplementation((m) =>
+        Promise.resolve({ ...m, id: 10 } as GameMetadata),
+      );
+      mockGamesService.save.mockImplementation((g: any) => Promise.resolve(g));
+
+      for (const save_paths of [["%LOCALAPPDATALOW%/Studio/Game"], []]) {
+        mockGameMetadataService.save.mockClear();
+        mockGamesService.findOneByGameIdOrFail.mockResolvedValue({
+          id: 1,
+          file_path: "/test.zip",
+          type: "WINDOWS_PORTABLE",
+          early_access: false,
+          provider_metadata: [providerMeta],
+          user_metadata: { save_paths },
+          metadata: null,
+        });
+        await service.merge(1);
+        expect(
+          mockGameMetadataService.save.mock.calls[0][0].save_paths,
+        ).toEqual(save_paths);
+      }
+    });
   });
 
   describe("normalizeRelations (via merge)", () => {

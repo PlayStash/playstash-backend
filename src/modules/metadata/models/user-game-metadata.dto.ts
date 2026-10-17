@@ -259,6 +259,22 @@ export class UpdateGameUserMetadataDto {
   })
   umu_proton_path?: string;
 
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(1024, { each: true })
+  @ApiPropertyOptional({
+    description:
+      "Folders holding the game's save files, one entry per folder. Clients back them up with their contents and subfolders. Supports %USERPROFILE%, %APPDATA%, %LOCALAPPDATA%, %LOCALAPPDATALOW%, %DOCUMENTS% and %INSTALLDIR%. An empty array clears the list.",
+    example: ["%LOCALAPPDATALOW%/PinkySoul/ExquisiteFishing"],
+    type: () => String,
+    isArray: true,
+    maxItems: 20,
+  })
+  save_paths?: string[];
+
   @IsArray()
   @IsOptional()
   @IsUrl(undefined, { each: true })

@@ -398,6 +398,10 @@ export class GamesService {
         updatedUserMetadata.umu_proton_path = dto.user_metadata.umu_proton_path;
       }
 
+      if (dto.user_metadata.save_paths != null) {
+        updatedUserMetadata.save_paths = dto.user_metadata.save_paths;
+      }
+
       if (dto.user_metadata.url_screenshots != null) {
         updatedUserMetadata.url_screenshots = dto.user_metadata.url_screenshots;
       }

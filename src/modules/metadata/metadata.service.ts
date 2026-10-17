@@ -617,6 +617,10 @@ export class MetadataService {
     if (userMetadata.launch_profiles != null) {
       overrides.launch_profiles = userMetadata.launch_profiles;
     }
+    // An empty save path list likewise clears the folders set before.
+    if (userMetadata.save_paths != null) {
+      overrides.save_paths = userMetadata.save_paths;
+    }
 
     return {
       ...base,

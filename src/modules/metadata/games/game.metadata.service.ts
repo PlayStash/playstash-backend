@@ -147,6 +147,7 @@ export class GameMetadataService {
       umu_game_id: game.umu_game_id,
       umu_store: game.umu_store,
       umu_proton_path: game.umu_proton_path,
+      save_paths: game.save_paths,
       publishers: [],
       developers: [],
       tags: [],

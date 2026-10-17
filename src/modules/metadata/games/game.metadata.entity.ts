@@ -283,6 +283,16 @@ export class GameMetadata extends DatabaseEntity implements Metadata {
   })
   umu_proton_path?: string;
 
+  @Column({ type: "simple-json", nullable: true })
+  @ApiPropertyOptional({
+    description:
+      "Folders holding the game's save files, one entry per folder. Clients back them up with their contents and subfolders. Supports %USERPROFILE%, %APPDATA%, %LOCALAPPDATA%, %LOCALAPPDATALOW%, %DOCUMENTS% and %INSTALLDIR%. An empty array clears the list.",
+    example: ["%LOCALAPPDATALOW%/PinkySoul/ExquisiteFishing"],
+    type: () => String,
+    isArray: true,
+  })
+  save_paths?: string[];
+
   @JoinTable({
     name: "game_metadata_publishers_publisher_metadata",
     joinColumn: {

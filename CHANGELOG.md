@@ -1,5 +1,11 @@
 # PlayStash Backend Changelog
 
+## 17.1.7
+
+### Changes
+
+- Games have a new `save_paths` metadata field: the folders holding the game's save files (with `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%LOCALAPPDATALOW%`, `%DOCUMENTS%` and `%INSTALLDIR%` placeholders). Clients use it to back up and restore saves of games their save tool does not know; an empty list clears it. The database gains the `game_metadata.save_paths` column automatically on startup.
+
 ## 17.1.6
 
 ### Changes
